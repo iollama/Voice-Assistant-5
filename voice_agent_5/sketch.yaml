@@ -1,0 +1,1 @@
+default_fqbn: esp32:esp32:esp32s3:CDCOnBoot=cdc,CPUFreq=240,FlashMode=qio,FlashSize=16M,PartitionScheme=custom,DebugLevel=none,PSRAM=opi,UploadSpeed=921600,LoopCore=1,EventsCore=1,USBMode=default,DFUOnBoot=default,EraseFlash=none,JTAGAdapter=disabled,MSCOnBoot=default
