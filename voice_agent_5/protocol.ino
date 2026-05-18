@@ -64,32 +64,28 @@ static void handleAudioDelta(const String& payload) {
     }
 }
 
-// Infrequent tool call — latency not critical, use full JSON parse
-static void handleEmotionToolCall(const String& payload) {
-    DynamicJsonDocument doc(1024);
-    if (deserializeJson(doc, payload) == DeserializationError::Ok) {
-        const char* args_str = doc["arguments"];
-        const char* call_id  = doc["call_id"] | "";
-        g_pending_call_id        = String(call_id);
-        g_awaiting_tool_response = true;
-        if (args_str) {
-            DynamicJsonDocument args(256);
-            if (deserializeJson(args, args_str) == DeserializationError::Ok) {
-                const char* emotion   = args["emotion"]   | "neutral";
-                float       intensity = args["intensity"] | 1.0f;
-                CPRINTF("MOOD: %s (intensity: %.1f)\n", emotion, intensity);
-                for (uint8_t e = 0; e < EMOTION_COUNT; e++) {
-                    if (strcmp(emotion, EMOTION_NAMES[e]) == 0) {
-                        g_current_emotion = e;
-                        break;
-                    }
-                }
-            }
+static void handleResponseDone(const String& payload) {
+    // Only the "response.done" event carries usage; "response.audio.done" does not.
+    if (payload.indexOf("\"response.done\"") > 0) {
+        DynamicJsonDocument doc(2048);
+        if (deserializeJson(doc, payload) == DeserializationError::Ok) {
+            JsonObject usage = doc["response"]["usage"];
+            uint32_t in_total  = usage["input_tokens"]  | 0;
+            uint32_t out_total = usage["output_tokens"] | 0;
+            uint32_t tot       = usage["total_tokens"]  | 0;
+            g_tokens.total        += tot;
+            g_tokens.input        += in_total;
+            g_tokens.output       += out_total;
+            g_tokens.input_cached += (uint32_t)(usage["input_token_details"]["cached_tokens"] | 0);
+            g_tokens.input_text   += (uint32_t)(usage["input_token_details"]["text_tokens"]   | 0);
+            g_tokens.input_audio  += (uint32_t)(usage["input_token_details"]["audio_tokens"]  | 0);
+            g_tokens.output_text  += (uint32_t)(usage["output_token_details"]["text_tokens"]  | 0);
+            g_tokens.output_audio += (uint32_t)(usage["output_token_details"]["audio_tokens"] | 0);
+            VPRINTF("WS: usage +%u in / +%u out (boot total %u)\n",
+                    (unsigned)in_total, (unsigned)out_total, (unsigned)g_tokens.total);
         }
     }
-}
 
-static void handleResponseDone() {
     if (g_awaiting_tool_response) {
         g_awaiting_tool_response = false;
         g_tool_result_ready      = true;
@@ -97,6 +93,72 @@ static void handleResponseDone() {
         CPRINTLN("WS: response done");
         ws_response_done = true;
     }
+}
+
+// ---- Session setup ---------------------------------------------------
+
+static String buildSessionUpdate() {
+    String s = "{\"type\":\"session.update\",\"session\":{"
+               "\"type\":\"realtime\","
+               "\"instructions\":";
+    s += jsonEscape(g_sys_instruction);
+    s += ",\"audio\":{"
+           "\"input\":{\"format\":{\"type\":\"audio/pcm\",\"rate\":24000},\"turn_detection\":null},"
+           "\"output\":{\"format\":{\"type\":\"audio/pcm\",\"rate\":24000},\"voice\":";
+    s += jsonEscape(g_voice);
+    s += "}},"
+         "\"reasoning\":{\"effort\":\"low\"},"
+         "\"tools\":";
+    buildToolsJson(s);
+    s += ",\"tool_choice\":\"auto\"}}";
+    return s;
+}
+
+// ---- Poll-loop helpers -----------------------------------------------
+
+static void submitToolResult(websockets::WebsocketsClient& ws) {
+    if (!g_tool_result_ready) return;
+    g_tool_result_ready = false;
+    String funcResult = "{\"type\":\"conversation.item.create\",\"item\":"
+                        "{\"type\":\"function_call_output\",\"call_id\":\"";
+    funcResult += g_pending_call_id;
+    funcResult += "\",\"output\":";
+    funcResult += jsonEscape(g_tool_result_output);
+    funcResult += "}}";
+    ws.send(funcResult);
+    ws.send("{\"type\":\"response.create\"}");
+    CPRINTLN("WS: Tool handled, requesting audio response");
+}
+
+static void handleBargein(websockets::WebsocketsClient& ws) {
+    if (!cmd_cancel) return;
+    cmd_cancel = false;
+    CPRINTLN("WS: Sending response.cancel (Barge-in)");
+    ws.send("{\"type\":\"response.cancel\"}");
+    ws_response_done = false;
+}
+
+static void streamMicAudio(websockets::WebsocketsClient& ws) {
+    if (g_state != STATE_RECORDING) return;
+    if (in_ring_buf->available() >= AUDIO_CHUNK_SIZE) {
+        in_ring_buf->read(s_mic_chunk, AUDIO_CHUNK_SIZE);
+        sendAudioChunk(ws, s_mic_chunk, AUDIO_CHUNK_SIZE);
+    }
+}
+
+static void handleCommit(websockets::WebsocketsClient& ws) {
+    if (!cmd_commit) return;
+    cmd_commit = false;
+    // Flush remaining mic buffer in AUDIO_CHUNK_SIZE chunks — no malloc needed
+    while (in_ring_buf->available() > 0) {
+        size_t to_read = min((size_t)AUDIO_CHUNK_SIZE, in_ring_buf->available());
+        in_ring_buf->read(s_mic_chunk, to_read);
+        sendAudioChunk(ws, s_mic_chunk, to_read);
+    }
+    CPRINTLN("WS: Sending input_audio_buffer.commit");
+    ws.send("{\"type\":\"input_audio_buffer.commit\"}");
+    CPRINTLN("WS: Sending response.create");
+    ws.send("{\"type\":\"response.create\"}");
 }
 
 // ---- Main protocol loop ----------------------------------------------
@@ -107,13 +169,12 @@ void manage_websockets() {
 
     wsClient.onMessage([](WebsocketsMessage message) {
         String payload = message.data();
-        if (payload.indexOf("\"response.audio.delta\"") > 0) {
+        if (payload.indexOf("\"response.output_audio.delta\"") > 0) {
             handleAudioDelta(payload);
-        } else if (payload.indexOf("\"response.function_call_arguments.done\"") > 0
-                   && payload.indexOf("\"set_display_emotion\"") > 0) {
-            handleEmotionToolCall(payload);
-        } else if (payload.indexOf("\"response.done\"") > 0 || payload.indexOf("\"response.audio.done\"") > 0) {
-            handleResponseDone();
+        } else if (payload.indexOf("\"response.function_call_arguments.done\"") > 0) {
+            dispatchToolCall(payload);
+        } else if (payload.indexOf("\"response.done\"") > 0 || payload.indexOf("\"response.output_audio.done\"") > 0) {
+            handleResponseDone(payload);
         } else if (payload.indexOf("\"error\"") > 0) {
             CPRINTLN("WS Error:");
             CPRINTLN(payload);
@@ -147,9 +208,8 @@ void manage_websockets() {
     }
 
     wsClient.addHeader("Authorization", "Bearer " + key);
-    wsClient.addHeader("OpenAI-Beta", "realtime=v1");
 
-    if (!wsClient.connectSecure("api.openai.com", 443, "/v1/realtime?model=gpt-realtime-1.5")) {
+    if (!wsClient.connectSecure("api.openai.com", 443, "/v1/realtime?model=gpt-realtime-2")) {
         CPRINTLN("WS Connection failed!");
         vTaskDelay(pdMS_TO_TICKS(2000));
         return;
@@ -157,63 +217,16 @@ void manage_websockets() {
     CPRINTLN("WS Connected!");
     setAssistantState(STATE_READY_FOR_INPUT);
 
-    String sessionUpdate = "{\"type\":\"session.update\",\"session\":{\"modalities\":[\"audio\",\"text\"],\"instructions\":";
-    sessionUpdate += jsonEscape(g_sys_instruction);
-    sessionUpdate += ",\"voice\":\"alloy\",\"input_audio_format\":\"pcm16\",\"output_audio_format\":\"pcm16\",\"turn_detection\":null,\"temperature\":";
-    sessionUpdate += String(g_temperature);
-    sessionUpdate += ",\"tools\":[{\"type\":\"function\",\"name\":\"set_display_emotion\","
-                     "\"description\":\"Set the display animation state to match the emotional tone of your response. Call this at the start of each response.\","
-                     "\"parameters\":{\"type\":\"object\",\"properties\":{"
-                     "\"emotion\":{\"type\":\"string\",\"enum\":[\"neutral\",\"happy\",\"excited\",\"empathetic\",\"confused\",\"concerned\",\"thinking\"]},"
-                     "\"intensity\":{\"type\":\"number\",\"minimum\":0.0,\"maximum\":1.0}"
-                     "},\"required\":[\"emotion\"]}}],\"tool_choice\":\"auto\""
-                     "}}";
     CPRINTLN("WS: Sending session.update...");
     CPRINTF("WS: System prompt: %s\n", g_sys_instruction.c_str());
-    wsClient.send(sessionUpdate);
+    wsClient.send(buildSessionUpdate());
 
     while (wsClient.available() && WiFi.status() == WL_CONNECTED) {
         wsClient.poll();
-
-        if (g_tool_result_ready) {
-            g_tool_result_ready = false;
-            String funcResult = "{\"type\":\"conversation.item.create\",\"item\":"
-                                "{\"type\":\"function_call_output\",\"call_id\":\"";
-            funcResult += g_pending_call_id;
-            funcResult += "\",\"output\":\"ok\"}}";
-            wsClient.send(funcResult);
-            wsClient.send("{\"type\":\"response.create\"}");
-            CPRINTLN("WS: Emotion tool handled, requesting audio response");
-        }
-
-        if (cmd_cancel) {
-            cmd_cancel = false;
-            CPRINTLN("WS: Sending response.cancel (Barge-in)");
-            wsClient.send("{\"type\":\"response.cancel\"}");
-            ws_response_done = false;
-        }
-
-        if (g_state == STATE_RECORDING) {
-            if (in_ring_buf->available() >= AUDIO_CHUNK_SIZE) {
-                in_ring_buf->read(s_mic_chunk, AUDIO_CHUNK_SIZE);
-                sendAudioChunk(wsClient, s_mic_chunk, AUDIO_CHUNK_SIZE);
-            }
-        }
-
-        if (cmd_commit) {
-            cmd_commit = false;
-            // Flush remaining mic buffer in AUDIO_CHUNK_SIZE chunks — no malloc needed
-            while (in_ring_buf->available() > 0) {
-                size_t to_read = min((size_t)AUDIO_CHUNK_SIZE, in_ring_buf->available());
-                in_ring_buf->read(s_mic_chunk, to_read);
-                sendAudioChunk(wsClient, s_mic_chunk, to_read);
-            }
-            CPRINTLN("WS: Sending input_audio_buffer.commit");
-            wsClient.send("{\"type\":\"input_audio_buffer.commit\"}");
-            CPRINTLN("WS: Sending response.create");
-            wsClient.send("{\"type\":\"response.create\"}");
-        }
-
+        submitToolResult(wsClient);
+        handleBargein(wsClient);
+        streamMicAudio(wsClient);
+        handleCommit(wsClient);
         vTaskDelay(pdMS_TO_TICKS(5));
     }
 

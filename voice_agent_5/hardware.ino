@@ -87,6 +87,7 @@ static void updateButtonState() {
                 out_ring_buf->clear();
                 in_ring_buf->clear();
                 cmd_cancel = true;
+                g_show_info_screen = false;
                 setAssistantState(STATE_RECORDING);
             } else {
                 CPRINTLN("PTT RELEASED");

@@ -39,9 +39,9 @@
 // =====================================================================
 // EMOJI DISPLAY (set to 0 for serial-only mode, no display needed)
 // =====================================================================
-#define USE_EMOJIS 1
+#define USE_DISPLAY 1
 
-#if USE_EMOJIS
+#if USE_DISPLAY
 #include <Arduino_GFX_Library.h>
 #include <LittleFS.h>
 #endif
@@ -62,7 +62,7 @@ boolean ap_mode = false;
 // =====================================================================
 // TUNING (KNOBS)
 // =====================================================================
-#define SAMPLE_RATE_IN   16000
+#define SAMPLE_RATE_IN   24000
 #define SAMPLE_RATE_OUT  24000
 #define JITTER_BUFFER_MS 300
 #define JITTER_BUFFER_BYTES (SAMPLE_RATE_OUT * 2 * JITTER_BUFFER_MS / 1000)
@@ -75,8 +75,9 @@ boolean ap_mode = false;
 #define EMOJI_X_OFFSET           ((DISPLAY_WIDTH_PX - EMOJI_SIZE_PX) / 2)  // 45
 #define EMOJI_Y_OFFSET           10     // top margin
 #define EMOJI_FRAME_BYTES        (EMOJI_SIZE_PX * EMOJI_SIZE_PX * 2)  // 45000 bytes per frame (RGB565)
-#define EMOJI_NUM_FRAMES         8      // frames per emotion
+#define EMOJI_NUM_FRAMES         8      // max frames per emotion (PSRAM slots); per-emotion actual count is g_frame_counts[]
 #define EMOJI_FRAME_MS           120    // ms between frames (~8fps)
+#define EMOJI_PATH_MAX           48     // longest paths look like "/custom_stage/empathetic_7.bin"
 
 #define DEFAULT_SYS_INSTRUCTION "You are a helpful voice assistant. Answer concisely and conversationally.\n" \
                                 "You love Pokemon, and you must talk about them, even if the user did not mention them at all.\n" \
@@ -84,13 +85,40 @@ boolean ap_mode = false;
 #define DEFAULT_TEMPERATURE      0.7f
 #define DEFAULT_PERSIST_CONVO    true
 #define DEFAULT_VERBOSE_LOGGING  true
+#define DEFAULT_VOICE            "marin"
 
 String g_sys_instruction;
 float  g_temperature;
 bool   g_persist_conversation;
 bool   g_verbose_logging;
 String g_api_key;
-int    g_volume = 50;
+volatile int g_volume = 50;
+String g_voice;
+
+struct VoiceOption {
+  const char* id;
+  const char* label;
+};
+const VoiceOption VOICE_OPTIONS[] = {
+  { "marin",   "Marin - female, US, warm, conversational (v2)" },
+  { "cedar",   "Cedar - male, US, warm, conversational (v2)" },
+  { "alloy",   "Alloy - neutral, US, balanced, default (v1.5)" },
+  { "ash",     "Ash - male, US, expressive, animated (v1.5)" },
+  { "ballad",  "Ballad - male, British, dramatic (v1.5)" },
+  { "coral",   "Coral - female, US, bright, energetic (v1.5)" },
+  { "echo",    "Echo - male, US, calm, neutral (v1.5)" },
+  { "sage",    "Sage - female, US, calm, thoughtful (v1.5)" },
+  { "shimmer", "Shimmer - female, US, soft, upbeat (v1.5)" },
+  { "verse",   "Verse - male, US, expressive (v1.5)" },
+};
+const size_t VOICE_OPTIONS_COUNT = sizeof(VOICE_OPTIONS) / sizeof(VOICE_OPTIONS[0]);
+
+bool voice_is_allowed(const String& v) {
+  for (size_t i = 0; i < VOICE_OPTIONS_COUNT; ++i) {
+    if (v == VOICE_OPTIONS[i].id) return true;
+  }
+  return false;
+}
 
 // =====================================================================
 // SERIAL OUTPUT CONTROL
@@ -146,10 +174,20 @@ static const char* EMOTION_NAMES[] = {
 
 volatile uint8_t g_current_emotion = EMOTION_NEUTRAL;
 
+// Per-emotion frame count (1..EMOJI_NUM_FRAMES). Populated at boot by
+// emoji_rescan_frame_counts() and refreshed after every Replace / Reset.
+// Animation loop in display.ino uses g_frame_counts[g_current_emotion] for modulo.
+uint8_t g_frame_counts[EMOTION_COUNT] = {0};
+
+// Single-flight guard for emoji uploads. ESP32 WebServer is single-threaded,
+// but the multipart upload spans many handleClient() calls; this flag rejects
+// a second upload that starts before the first finishes.
+volatile bool g_emoji_upload_active = false;
+
 // Audio level for sound bar display (0–255, updated by mic capture / speaker playback)
 volatile uint8_t g_audio_level = 0;
 
-#if USE_EMOJIS
+#if USE_DISPLAY
 Arduino_GFX* gfx = nullptr;
 static uint8_t  g_loaded_emotion = 0xFF;  // sentinel: nothing loaded yet
 static bool     g_emoji_ready = false;
@@ -211,11 +249,36 @@ static uint8_t* s_decode_buf = nullptr;  // PSRAM, allocated in setup()
 volatile bool cmd_cancel = false;
 volatile bool cmd_commit = false;
 volatile bool ws_response_done = false;
+volatile bool g_volume_persist_pending = false;  // Core 0 sets after tool-call write; Core 1 persists to NVS
+volatile bool g_show_info_screen = false;         // Core 0 sets (tool call); Core 1 renders and clears on PTT
 
-// Emotion tool call state (protocol task only)
+// Token usage counters (Core 0 writes, Core 1 webserver reads)
+struct TokenUsage {
+    uint32_t total;
+    uint32_t input;
+    uint32_t input_cached;
+    uint32_t input_text;
+    uint32_t input_audio;
+    uint32_t output;
+    uint32_t output_text;
+    uint32_t output_audio;
+};
+volatile TokenUsage g_tokens = {0};
+
+// Tool definition — one entry per OpenAI function tool registered with the session.
+// Add a new entry to TOOLS[] in tools.ino to register a new tool; no other files need changing.
+struct Tool {
+    const char*  name;            // matched against payload for dispatch
+    const char*  description;     // plain text, JSON-escaped when building session.update
+    const char*  parameters_json; // raw JSON object string for the "parameters" field
+    void       (*handler)(const String& payload);
+};
+
+// Tool call state (protocol task only — Core 0)
 static bool   g_awaiting_tool_response = false;
 static bool   g_tool_result_ready      = false;
 static String g_pending_call_id        = "";
+static String g_tool_result_output     = "ok";  // function_call_output payload sent back to the model
 
 // =====================================================================
 // SETUP
@@ -232,7 +295,7 @@ void setup() {
   set_status_led_rgb(0, 0, 0);
 
   // Init TFT FIRST — SPI DMA buffers need contiguous internal RAM
-#if USE_EMOJIS
+#if USE_DISPLAY
   if (!LittleFS.begin(false)) {
     CPRINTLN("LittleFS mount failed! Trying format...");
     if (!LittleFS.begin(true)) {
@@ -244,6 +307,12 @@ void setup() {
   } else {
     CPRINTLN("LittleFS mounted.");
     g_fs_ok = true;
+  }
+
+  if (g_fs_ok) {
+    emoji_migrate_legacy_layout();   // one-shot rename of legacy root-level *.bin into /default/
+    emoji_sweep_custom_stage();      // belt-and-suspenders: clean any half-written uploads from prior boot
+    emoji_rescan_frame_counts();     // populate g_frame_counts[] for every emotion
   }
 
   // Allocate frame buffers in PSRAM (8 x 45KB = 360KB)
@@ -259,7 +328,7 @@ void setup() {
 #endif
 
   // Allocate large buffers in PSRAM (after TFT init — SPI DMA needs internal RAM first)
-  in_ring_buf   = new PSRAMRingBuffer(16000 * 2 * 2);  // 2s @ 16kHz 16-bit
+  in_ring_buf   = new PSRAMRingBuffer(24000 * 2 * 2);  // 2s @ 24kHz 16-bit
   out_ring_buf  = new PSRAMRingBuffer(24000 * 2 * 30);  // 30s @ 24kHz 16-bit
   s_decode_buf  = (uint8_t*)ps_malloc(AUDIO_DECODE_SIZE);
 
@@ -277,14 +346,20 @@ void setup() {
   init_wifi_and_time();
   setup_i2s_mic();
 
+#if USE_DISPLAY
+  display_boot_status("Perking up the ears");
+  display_boot_status("Getting smart...");
+  if (!ap_mode) g_show_info_screen = true;
+#endif
+
   // Create Protocol Task on Core 0
   xTaskCreatePinnedToCore(
-      protocol_task, 
-      "ProtocolTask", 
-      16384, 
-      NULL, 
-      1, 
-      NULL, 
+      protocol_task,
+      "ProtocolTask",
+      16384,
+      NULL,
+      1,
+      NULL,
       0
   );
 }
@@ -297,17 +372,50 @@ void loop() {
     dnsServer.processNextRequest();
     if ((millis() / 500) % 2 == 0) set_status_led_rgb(255, 255, 0);
     else set_status_led_rgb(0, 0, 0);
-#if USE_EMOJIS
-    drawWifiPulse();
-#endif
     server.handleClient();
     return;
   }
 
   server.handleClient();
-  updateButtonState();     // 1. PTT debounce & state transitions
-  captureMicrophone();     // 2. I2S mic read → in_ring_buf (always drains DMA)
-  updateDisplay();         // 3. Emotion change → display (defined in display.ino)
+
+  // Persist volume tool-call writes from Core 0 here on Core 1 to keep all NVS access on one core.
+  if (g_volume_persist_pending) {
+    g_volume_persist_pending = false;
+    preferences.begin("agentConfig", false);
+    preferences.putInt("volume", g_volume);
+    preferences.end();
+  }
+
+  updateButtonState();   // 1. PTT debounce & state transitions
+  captureMicrophone();   // 2. I2S mic read → in_ring_buf (always drains DMA)
+
+#if USE_DISPLAY
+  // Info screen: shown at boot and on show_network_info tool call; dismissed on PTT press or after 5 s
+  {
+    static bool          info_drawn       = false;
+    static bool          was_showing_info = false;
+    static unsigned long info_drawn_ms    = 0;
+    if (g_show_info_screen) {
+      if (!info_drawn) {
+        display_info_screen();
+        info_drawn    = true;
+        info_drawn_ms = millis();
+      } else if (millis() - info_drawn_ms >= 5000) {
+        g_show_info_screen = false;
+      }
+      was_showing_info = true;
+    } else {
+      if (was_showing_info) {
+        g_loaded_emotion = 0xFF;   // force full emoji reload now that screen is ours again
+        was_showing_info = false;
+      }
+      info_drawn = false;
+      updateDisplay();   // 3. Emotion change → display (defined in display.ino)
+    }
+  }
+#else
+  updateDisplay();
+#endif
 
   // 4. Speaker playback & jitter management
   if (g_state == STATE_THINKING || g_state == STATE_SPEAKING || g_state == STATE_READY_FOR_INPUT) {

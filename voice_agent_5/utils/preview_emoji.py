@@ -13,7 +13,7 @@ from pathlib import Path
 from PIL import Image
 
 PROJECT_DIR = Path(__file__).parent.parent
-DATA_DIR = PROJECT_DIR / "data"
+DATA_DIR = PROJECT_DIR / "data" / "default"
 PREVIEW_DIR = Path(__file__).parent / "preview"
 FRAME_SIZE = 150
 NUM_FRAMES = 8

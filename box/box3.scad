@@ -8,6 +8,22 @@
    ========================================================================== */
 
 /* ==========================================
+   0. RENDER CONTROL
+   ========================================= */
+RING        = 1;
+TRAY        = 1;
+LID         = 1;
+ACCESORIES  = 1;
+PCB         = 0;
+TRAY_TYPE   = MODULES; // options = MODULES / PCB
+
+_RING       = PCB ? 0 : RING;
+_TRAY       = PCB ? 0 : TRAY;
+_LID        = PCB ? 0 : LID;
+_ACCESORIES = PCB ? 0 : ACCESORIES;
+_PCB        = PCB ? 1 : PCB;
+
+/* ==========================================
    1. CONFIGURABLE PARAMETERS & COORDINATES
    ========================================= */
 
@@ -40,6 +56,14 @@ inner_h_ring = 35; //height of ring without lids
 // --- LID ---
 lid_t = 2.0;
 
+// --- PCB ---
+pcb_height = 1.6;
+pcb_offset = 2.0;   // inset from ring inner wall
+pcb_line_w = 0.4;   // blue reference line width
+pcb_boss_r   = 63.0; // radius of PCB mounting bosses (inward from ring bosses at 66.5mm)
+pcb_boss_rot = -10.0; // clockwise rotation offset in degrees (negative = clockwise)
+pcb_hole_d   = 2.1;  // PCB mounting hole diameter
+
 // --- COMPONENTS  COORDINATES ---
 spk_x = 1.0;
 spk_y = -8.0;
@@ -47,6 +71,7 @@ tft_y = 42.0;
 esp_x = -44.0;
 esp_y =   4.0;
 mic_y = -60.0;
+mic_boss_x = 8.0;
 amp_pos = 32.0;
 
 // --- GENERIC BOSS HEIGHTS ---
@@ -90,27 +115,30 @@ outer_h_ring = lid_t*2 + inner_h_ring;
    2. MAIN ASSEMBLY CALL (ZERO-OVERLAP GRID)
    ========================================== */
 
-render_component_tray();
+if (1==_TRAY)       render_component_tray();
 
-// Cantilever bracket needs extra x clearance: origin is top-right boss,
-// bracket extends (esp_boss_off_x*2 + 5)mm to the left of origin
-translate([enclosure_d*0.8, 30, 0]) cantilever_bracket();
+if (1==_ACCESORIES) {
+    if (TRAY_TYPE != PCB) {
+        // Cantilever bracket needs extra x clearance: origin is top-right boss,
+        // bracket extends (esp_boss_off_x*2 + 5)mm to the left of origin
+        translate([enclosure_d*0.8, 30, 0]) cantilever_bracket();
+        // Inline button frame (separate part)
+        translate([enclosure_d*0.8+5 , -50, inline_btn_h/2]) inline_button_frame();
+        // Inline button bracket (separate part, printed flat)
+        translate([enclosure_d*0.8+5 , 0, inline_btn_ear_t/2]) inline_button_bracket();
+    }
+    // Speaker Y-bracket (separate part, printed flat)
+    translate([enclosure_d*0.8+35, 0, 0]) speaker_y_bracket();
+}
 
-// Inline button frame (separate part)
-translate([enclosure_d*0.8+5 , -50, inline_btn_h/2]) inline_button_frame();
+if (1==_PCB) translate([0, -(enclosure_d + 15), 0]) {
+    projection() render_pcb();
+    pcb_reference_overlay();
+}
 
-// Inline button bracket (separate part, printed flat)
-translate([enclosure_d*0.8+5 , 0, inline_btn_ear_t/2]) inline_button_bracket();
+if (1==_RING)       translate([0, enclosure_d + 15, 0]) render_shell_ring();
 
-// Speaker Y-bracket (separate part, printed flat)
-translate([enclosure_d*0.8+35, 0, 0]) speaker_y_bracket();
-
-// Outer ring
-translate([0, enclosure_d + 15, 0]) render_shell_ring();
-
-// Lid
-translate([enclosure_d + 15, (enclosure_d + 15), 0]) render_circular_lid();
-
+if (1==_LID)        translate([enclosure_d + 15, (enclosure_d + 15), 0]) render_circular_lid();
 
 /* ==========================================
    3. MODULE: THE COMPONENT TRAY (THE FACE)
@@ -153,12 +181,15 @@ module render_component_tray() {
         }
     }
     translate([0, 0, lid_t]) {
-        component_esp32();
-        component_tft();
+        if (TRAY_TYPE == MODULES) {
+            component_esp32();
+            component_tft();
+            component_amp();
+            component_mic();
+            component_inline_button();
+        }
         component_speaker();
-        component_amp();
-        component_mic();
-        component_inline_button();
+        if (TRAY_TYPE == PCB) component_pcb_mount();
     }
 }
 
@@ -278,12 +309,17 @@ module component_inline_button() {
     translate([inline_btn_tray_x, inline_btn_tray_y, 0])
         for(s = [1, -1])
             translate([s * screw_offset, 0, 0])
-                make_boss(od=5, pilot_d=1.9, h=bh+1);
+                make_boss(od=5, pilot_d=1.9, h=bh+1, n_gussets=2, gusset_ang=90);
 }
 
 module component_mic() {
     translate([0, mic_y, 0])
-        for(ix=[-8, 8]) translate([ix, 0, 0]) make_boss(od=5, pilot_d=1.9, h=boss_h, n_gussets=0);
+        for(ix=[-mic_boss_x, mic_boss_x]) translate([ix, 0, 0]) make_boss(od=5, pilot_d=1.9, h=boss_h, n_gussets=2, gusset_ang=270);
+}
+
+module component_pcb_mount() {
+    for(a = lid_angles) rotate([0, 0, a + pcb_boss_rot]) translate([pcb_boss_r, 0, 0])
+        make_boss(od=5, pilot_d=1.9, h=esp_boss_height, n_gussets=1, gusset_ang=0);
 }
 
 module mic_grille() {
@@ -297,7 +333,104 @@ module mic_grille() {
 }
 
 /* ==========================================
-   6. MODULE: THE LID (THE BACK)
+   6. MODULE: THE PCB DISK
+   ========================================== */
+module render_pcb() {
+    difference() {
+        cylinder(d=inner_d - pcb_offset * 2, h=pcb_height, $fn=120);
+        // Ring boss clearance notches
+        for(a = lid_angles) rotate([0, 0, a]) translate([lid_screw_r, 0, -1])
+            cylinder(r=4.5 + pcb_offset, h=pcb_height + 2, $fn=32);
+        // PCB mounting holes
+        for(a = lid_angles) rotate([0, 0, a + pcb_boss_rot]) translate([pcb_boss_r, 0, -1])
+            cylinder(d=pcb_hole_d, h=pcb_height + 2, $fn=16);
+        // Speaker clearance: deboss + Y-bracket footprint + speaker bosses
+        translate([spk_x, spk_y, -1]) {
+            cylinder(d=57, h=pcb_height + 2, $fn=120);        // deboss circle
+            cylinder(r=8,  h=pcb_height + 2, $fn=48);         // bracket hub
+            for(a = [0, 120, 240]) rotate([0, 0, a]) {
+                translate([0, -4, 0]) cube([34, 8, pcb_height + 2]); // bracket arm
+                translate([34, 0, 0]) cylinder(r=4, h=pcb_height + 2, $fn=32); // bracket tip pad
+                translate([32, 0, 0]) cylinder(d=5, h=pcb_height + 2, $fn=32); // speaker boss
+            }
+        }
+    }
+}
+
+module pcb_reference_overlay() {
+    color("blue") {
+        // TFT viewport circle
+        projection() translate([0, tft_y, 0])
+            difference() {
+                cylinder(d=tft_view_d + pcb_line_w, h=1, $fn=80);
+                cylinder(d=tft_view_d - pcb_line_w, h=2, $fn=80);
+            }
+        // TFT bosses
+        projection() for(ix=[-tft_hole_x/2, tft_hole_x/2], iy=[-tft_hole_y/2, tft_hole_y/2])
+            translate([ix, tft_y + iy, 0])
+                difference() {
+                    cylinder(d=5 + pcb_line_w, h=1, $fn=32);
+                    cylinder(d=5 - pcb_line_w, h=2, $fn=32);
+                }
+        // Mic bosses
+        projection() for(ix=[-mic_boss_x, mic_boss_x])
+            translate([ix, mic_y, 0])
+                difference() {
+                    cylinder(d=5 + pcb_line_w, h=1, $fn=32);
+                    cylinder(d=5 - pcb_line_w, h=2, $fn=32);
+                }
+        // Amp bosses
+        projection() translate([amp_pos, amp_pos, 0])
+            for(sx=[-1, 1]) translate([sx * amp_hole_x/2, amp_hole_y_off, 0])
+                difference() {
+                    cylinder(d=5 + pcb_line_w, h=1, $fn=32);
+                    cylinder(d=5 - pcb_line_w, h=2, $fn=32);
+                }
+        // Button groove inner outline
+        projection() {
+            translate([btn_groove_x - btn_access_w/2 - pcb_line_w, btn_groove_y - btn_access_ext, 0])
+                cube([pcb_line_w, btn_access_l, 1]);
+            translate([btn_groove_x + btn_access_w/2, btn_groove_y - btn_access_ext, 0])
+                cube([pcb_line_w, btn_access_l, 1]);
+            translate([btn_groove_x, btn_groove_y - btn_access_ext, 0])
+                intersection() {
+                    difference() {
+                        cylinder(r=btn_access_w/2 + pcb_line_w, h=1, $fn=32);
+                        cylinder(r=btn_access_w/2,               h=2, $fn=32);
+                    }
+                    translate([-(btn_access_w + pcb_line_w), -(btn_access_w + pcb_line_w), 0])
+                        cube([(btn_access_w + pcb_line_w)*2, btn_access_w + pcb_line_w, 2]);
+                }
+        }
+        // Button bracket bosses
+        projection() translate([inline_btn_tray_x, inline_btn_tray_y, 0]) {
+            _inner = inline_btn_body + inline_btn_clr * 2;
+            _screw_off = (_inner + wall*2)/2 + inline_btn_ear_ext - inline_btn_ear_w/2;
+            for(s=[1,-1]) translate([s * _screw_off, 0, 0])
+                difference() {
+                    cylinder(d=5 + pcb_line_w, h=1, $fn=32);
+                    cylinder(d=5 - pcb_line_w, h=2, $fn=32);
+                }
+        }
+        // ESP32 board outline
+        projection() translate([esp_x, esp_y, 0])
+            difference() {
+                translate([-esp_w/2 - pcb_line_w, -esp_l/2 - pcb_line_w, 0])
+                    cube([esp_w + pcb_line_w*2, esp_l + pcb_line_w*2, 1]);
+                translate([-esp_w/2, -esp_l/2, -1])
+                    cube([esp_w, esp_l, 3]);
+            }
+        // PCB mount bosses
+        projection() for(a = lid_angles) rotate([0, 0, a + pcb_boss_rot]) translate([pcb_boss_r, 0, 0])
+            difference() {
+                cylinder(d=5 + pcb_line_w, h=1, $fn=32);
+                cylinder(d=5 - pcb_line_w, h=2, $fn=32);
+            }
+    }
+}
+
+/* ==========================================
+   7. MODULE: THE LID (THE BACK)
    ========================================== */
 module render_circular_lid() {
     difference() {

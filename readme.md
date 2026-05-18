@@ -1,4 +1,4 @@
-# Voice Assistant 5 -- ESP32-S3 Voice Assistant
+﻿# Voice Assistant 5 -- ESP32-S3 Voice Assistant
 
 Meet your new desk companion: press the button, ask it anything, and get an instant spoken reply -- with an animated emoji face that grins, frowns, or laughs along with the conversation. It's small, expressive, and entirely yours -- a real voice assistant you built yourself, in a case you 3D-printed, powered by your own OpenAI account.
 
@@ -10,7 +10,9 @@ Meet your new desk companion: press the button, ask it anything, and get an inst
 - **Animated emoji face shows you how the assistant feels** -- the assistant itself picks the mood and the display reacts in real time
 - **Control the assistant personality** -- write who it is and how it behaves, right from your phone, no code needed
 - **Glance to know what it's doing** -- a colored light tells you when it's listening, thinking, or speaking
+- **The assistant adjusts its own volume** -- say "speak up" or "quieter please" and it adjusts in real time; the new level persists across reboots
 - **Plug in your own OpenAI key** -- you control the account and the cost, no subscription in the middle
+- **Make the face your own** -- drop in a GIF, PNG, or JPG from the web portal and the assistant uses it as the on-device emoji; reset back to the defaults any time
 - **It remembers the conversation** -- pick up where you left off instead of starting from scratch
 - **Set up WiFi once** -- connect from your phone the first time, it remembers your network forever
 - **Build it yourself for ~$20** -- 3D-printed case included, full source open and hackable, parts links provided
@@ -27,6 +29,8 @@ Meet your new desk companion: press the button, ask it anything, and get an inst
 A push-to-talk voice assistant built on the ESP32-S3, using the OpenAI Realtime API for speech-to-speech conversation over secure WebSockets. Features dual-core FreeRTOS architecture, animated emoji display with audio waveform visualization, a web configuration portal, and RGB LED status indicators.
 
 Core 0 handles all network and protocol tasks (WiFi, WebSocket, Base64 encode/decode). Core 1 handles all hardware I/O (I2S microphone/speaker, button, display). The two cores communicate through PSRAM ring buffers and volatile flags.
+
+The assistant can also call **OpenAI function tools** during a response — currently `set_display_emotion` (drives the emoji display), `set_volume` (adjusts speaker volume, persists across reboots), and `show_network_info` (shows the device IP and token count on screen).
 
 ## Hardware Components
 
@@ -98,7 +102,11 @@ Core 0 handles all network and protocol tasks (WiFi, WebSocket, Base64 encode/de
 | 5V | MAX98357A VIN |
 | GND | All components (common ground) |
 
-## Arduino IDE Compilation Settings
+## Build Toolchain
+
+Pick **one** of the two toolchains below -- both build the same `.ino` source. Versions are pinned in [toolchain.md](toolchain.md).
+
+### Option A -- Arduino IDE
 
 Set these under the **Tools** menu before uploading:
 
@@ -124,17 +132,32 @@ Set these under the **Tools** menu before uploading:
 
 The custom partition table (`partitions.csv`) provides 3 MB for the app and ~11 MB for LittleFS (emoji frames).
 
-## Libraries
-
-Install via Arduino Library Manager (`Sketch > Include Library > Manage Libraries...`):
+Install libraries via Arduino Library Manager (`Sketch > Include Library > Manage Libraries...`):
 
 | Library | Author | Note |
 |---------|--------|------|
 | **ArduinoJson** (v6.x+) | Benoit Blanchon | JSON parsing for API messages |
 | **Adafruit NeoPixel** | Adafruit | RGB status LED driver |
-| **Arduino_GFX_Library** | moononournation | Display driver (required only when `USE_EMOJIS 1`) |
+| **Arduino_GFX_Library** | moononournation | Display driver (required only when `USE_DISPLAY 1`) |
+| **QRCode** | ricmoo | QR code generator (required only when `USE_DISPLAY 1`) |
 
 **ArduinoWebsockets** is **vendored** in the `src/` directory with two critical bug fixes applied. Do **not** install it via Library Manager -- the sketch includes the local patched copy automatically. See [websockets_patches.md](voice_agent_5/docs/websockets_patches.md) for details.
+
+### Option B -- PlatformIO
+
+Everything (board settings, partition scheme, libraries, build flags) is pinned in [platformio.ini](platformio.ini). After cloning and copying `config.h.sample` to `config.h` (see below):
+
+```bash
+pio run -t upload          # compile + upload sketch
+pio run -t uploadfs        # upload LittleFS data partition (emoji frames)
+pio device monitor         # serial monitor at 115200, with esp32 exception decoder
+```
+
+Or, in VS Code, install the **PlatformIO IDE** extension and use the toolbar buttons (Build / Upload / Upload Filesystem Image / Serial Monitor).
+
+`platformio.ini` uses the [pioarduino](https://github.com/pioarduino/platform-espressif32) fork of the espressif32 platform -- the default upstream platform is stuck on Arduino-ESP32 core 2.x and is missing a header that `Arduino_GFX_Library` 1.6.5 needs. The pin `55.03.38-1` matches Arduino-ESP32 3.3.8.
+
+The vendored ArduinoWebsockets is found via PlatformIO's `src_dir = voice_agent_5` setting -- do not add `arduinoWebsockets` to `lib_deps`.
 
 ## Configuration
 
@@ -160,11 +183,12 @@ Then edit `config.h` and replace the placeholder values with your OpenAI API key
 
 1. On first boot (or when saved credentials fail), the device creates a WiFi access point named `VOICE-AGENT-XXYY` (last 2 bytes of MAC)
 2. The RGB LED flashes yellow to indicate configuration mode
-3. Connect to this network with your phone or computer
+3. The display shows a WiFi QR code and join instructions — scan it with your phone to join the network automatically
 4. A captive portal page opens automatically (or navigate to `192.168.4.1`)
 5. Enter your WiFi SSID and password, then click **Save & Restart**
 6. The device restarts and connects to your WiFi network
-7. The RGB LED turns green when ready
+7. Once connected, the display shows the IP address and a QR code — scan it or enter the IP in a browser to reach the settings page
+8. The RGB LED turns green when ready
 
 ### Agent Settings (Web Portal)
 
@@ -173,6 +197,7 @@ Once connected to WiFi, open a browser and navigate to `http://voice-agent-XXYY.
 From the settings page you can configure:
 
 - **System Prompt** -- Control the assistant's persona and response style
+- **Voice** -- One of the 10 OpenAI Realtime voices (`marin`, `cedar`, `alloy`, `ash`, `ballad`, `coral`, `echo`, `sage`, `shimmer`, `verse`); selection takes effect on the next session
 - **Temperature** (0.0 - 2.0) -- Higher values produce more creative responses
 - **Persist Conversation** -- When enabled, the assistant remembers previous exchanges via `previous_response_id` chaining
 - **Verbose Logging** -- Enable detailed debug output on Serial Monitor
@@ -193,34 +218,49 @@ All settings are saved to NVS and persist across reboots. Use **Restore Defaults
 | POST | `/clearApiKey` | Revert to compiled API key |
 | POST | `/saveVolume` | Save volume setting |
 | POST | `/restoreAgent` | Restore default agent settings |
+| GET | `/emojis` | Emoji customization page (needs internet — loads GIF decoder + zip libraries from a CDN) |
+| GET | `/api/emoji/manifest` | Per-emotion `{count, source}` JSON used by the customization page |
+| GET, POST | `/api/emoji/<emotion>[/<n>.bin\|/reset]`, `/api/emoji/reset-all` | Browser uploads / resets one or all emojis. Writes rejected with 409 during an active voice turn. |
 
 ## Emoji Display Setup
 
 ### Prerequisites
 
 - GC9A01 display wired per the pin table above
-- `USE_EMOJIS` set to `1` in `voice_agent_5.ino` (default)
-- Arduino_GFX_Library installed via Library Manager
+- `USE_DISPLAY` set to `1` in `voice_agent_5.ino` (default)
+- Arduino_GFX_Library available (Library Manager for Arduino IDE; auto-resolved from `lib_deps` for PlatformIO)
 
-### LittleFS Upload Plugin
+### Replacing Emojis from Your Browser
 
-The emoji animations are stored as pre-rendered RGB565 binary frames in a LittleFS partition. They must be flashed separately from the sketch.
+Once the device is on WiFi, browse to `http://voice-agent-XXYY.local/emojis` (or hit **Open Emoji Settings** on the main settings page). Drop in a GIF, PNG, or JPG for any of the seven moods and the assistant will use it immediately -- no re-flash, no Python, no SD card. The shipped defaults are stored separately and are never overwritten, so there is no way to brick the device through customization; reset any mood (or all of them) at any time. See [voice_agent_5/docs/emoji-customization.md](voice_agent_5/docs/emoji-customization.md) for the full walkthrough, supported formats, and how to share an emoji pack.
 
-**Install the plugin:**
+The customization page needs your browser to have internet access (it loads the GIF decoder and zip libraries from a CDN). The device itself stays local-only.
+
+### Uploading the LittleFS Filesystem
+
+The emoji animations are stored as pre-rendered RGB565 binary frames in a LittleFS partition. They must be flashed separately from the sketch. The sketch and filesystem go to different partitions -- they don't overwrite each other. You only need to re-upload the filesystem when the frame files change.
+
+**With PlatformIO:**
+
+```bash
+pio run -t uploadfs
+```
+
+`platformio.ini` already points `data_dir` at `voice_agent_5/data/`, so this packages the 56 `.bin` frame files into a LittleFS image and flashes it to the data partition.
+
+**With Arduino IDE** (one-time plugin install):
 
 1. Go to https://github.com/earlephilhower/arduino-littlefs-upload/releases
 2. Download the latest `.vsix` file
 3. Copy it to `~/.arduinoIDE/plugins/` (create the `plugins` folder if it doesn't exist)
 4. Restart Arduino IDE
 
-**Upload the filesystem:**
+Then to upload:
 
 1. Close the Serial Monitor (it locks the COM port)
 2. Press **Ctrl+Shift+P** to open the Command Palette
 3. Type **Upload LittleFS** and select **"Upload LittleFS to Pico/ESP8266/ESP32"**
 4. Wait for it to finish
-
-The plugin packages the `data/` folder (containing 56 `.bin` frame files) into a LittleFS image and flashes it to the data partition. The sketch and filesystem go to different partitions -- they don't overwrite each other. You only need to re-upload the filesystem when the frame files change.
 
 **Verify:** Open Serial Monitor after uploading both sketch and filesystem. You should see:
 
@@ -243,7 +283,7 @@ cd voice_agent_5
 python utils/convert_gifs.py
 ```
 
-This extracts 8 evenly-spaced frames from each GIF, resizes to 150x150, converts to RGB565 little-endian binary, and writes to `data/<emotion>_<frame>.bin`.
+This extracts 8 evenly-spaced frames from each GIF, resizes to 150x150, converts to RGB565 little-endian binary, and writes to `data/default/<emotion>_<frame>.bin`. The `default/` subdirectory is the shipped emoji set; runtime overrides written from the captive portal land in `data/custom/` on the device and never touch the defaults.
 
 ### Emoji Credits
 
@@ -263,7 +303,7 @@ These are defined in `voice_agent_5.ino` and require recompilation to change:
 
 | Constant | Default | Description |
 |----------|---------|-------------|
-| `SAMPLE_RATE_IN` | 16000 | Microphone sample rate (Hz). Must match INMP441 config. |
+| `SAMPLE_RATE_IN` | 24000 | Microphone sample rate (Hz). Required by the OpenAI Realtime GA API (`audio/pcm` is fixed at 24 kHz). |
 | `SAMPLE_RATE_OUT` | 24000 | Speaker playback rate (Hz). Must match OpenAI Realtime API output format. |
 | `JITTER_BUFFER_MS` | 300 | Milliseconds of audio to buffer before starting playback. Higher = smoother but more latency. |
 | `LOW_WATER_BYTES` | 3072 | Rebuffer threshold (~64 ms at 24 kHz). When the speaker buffer drops below this during playback, pause and re-accumulate before resuming. |
@@ -272,7 +312,7 @@ These are defined in `voice_agent_5.ino` and require recompilation to change:
 | `EMOJI_FRAME_MS` | 120 | Delay between emoji animation frames (~8 fps). Lower = faster animation. |
 | `EMOJI_SIZE_PX` | 150 | Emoji frame dimensions (width and height). Must match `convert_gifs.py` output. |
 | `EMOJI_NUM_FRAMES` | 8 | Number of animation frames per emotion. Must match `convert_gifs.py` output. |
-| `USE_EMOJIS` | 1 | Set to `0` to disable display entirely (serial-only mode, no GC9A01 or Arduino_GFX needed). |
+| `USE_DISPLAY` | 1 | Set to `0` to disable display entirely (serial-only mode, no GC9A01 or Arduino_GFX needed). |
 
 ### Runtime Settings (Web UI / NVS)
 
@@ -281,6 +321,7 @@ These are configurable at runtime via the web portal and persist across reboots:
 | Setting | Default | Range | Description |
 |---------|---------|-------|-------------|
 | System Prompt | "You are a helpful voice assistant..." | up to 2000 chars | Controls assistant persona |
+| Voice | `marin` | `alloy`, `ash`, `ballad`, `coral`, `echo`, `sage`, `shimmer`, `verse`, `marin`, `cedar` | OpenAI Realtime voice; applies on next session |
 | Temperature | 0.7 | 0.0 - 2.0 | Model creativity |
 | Persist Conversation | true | boolean | Chain responses via `previous_response_id` |
 | Verbose Logging | true | boolean | Detailed serial debug output |
@@ -305,6 +346,45 @@ The design uses a tray/ring/lid construction: the tray holds all components (ESP
 | `STATE_RECORDING` | Pink | Mic active, streaming audio to OpenAI |
 | `STATE_THINKING` | Blue | Waiting for API response |
 | `STATE_SPEAKING` | Cyan | Playing response audio |
+
+## Adding a Tool
+
+Tools are OpenAI function calls the model makes autonomously during a response. All tool registration lives in `voice_agent_5/tools.ino` — adding a tool is two steps and touches only that one file.
+
+**Step 1 — Write the handler:**
+
+```cpp
+static void handleMyToolCall(const String& payload) {
+    DynamicJsonDocument doc(256);
+    if (deserializeJson(doc, payload) != DeserializationError::Ok) return;
+
+    beginToolCall(doc["call_id"] | "");   // sets up g_pending_call_id and flags
+
+    // parse arguments, do your work, optionally set g_tool_result_output
+    g_tool_result_output = "done";
+}
+```
+
+> **Important:** handlers run inside the WebSocket `onMessage` callback and cannot call `wsClient.send()` directly. Use the flag mechanism (`beginToolCall` + `g_tool_result_output`) — the protocol loop sends the result after `response.done` arrives. For cross-core side effects (display, NVS writes), set a `volatile bool` flag and handle it on Core 1 in `loop()`.
+
+**Step 2 — Register the tool:**
+
+Add an entry to the `TOOLS[]` array in `tools.ino`:
+
+```cpp
+{
+    "my_tool_name",
+    "Plain-text description the model reads to decide when to call this.",
+    "{\"type\":\"object\",\"properties\":{"
+    "\"param1\":{\"type\":\"string\",\"description\":\"What param1 does\"}"
+    "},\"required\":[\"param1\"]}",
+    handleMyToolCall
+}
+```
+
+`buildToolsJson()` will include the new schema in the next `session.update`, and `dispatchToolCall()` will route calls to your handler. No changes to `protocol.ino` needed.
+
+For the full async tool call flow diagram, see [voice_agent_5/docs/architecture.md](voice_agent_5/docs/architecture.md#how-to-add-a-new-tool).
 
 ## Architecture Documentation
 

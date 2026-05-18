@@ -6,7 +6,7 @@ Per docs/architecture.md (Emoji Display System):
 - Resize to 150x150 (LANCZOS)
 - Flatten alpha onto black background
 - Convert to RGB565 little-endian (ESP32 native byte order)
-- Write to data/<emotion>_<frame>.bin
+- Write to data/default/<emotion>_<frame>.bin
 """
 
 import struct
@@ -15,7 +15,7 @@ from PIL import Image
 
 PROJECT_DIR = Path(__file__).parent.parent
 FEELINGS_DIR = PROJECT_DIR / "feelings"
-DATA_DIR = PROJECT_DIR / "data"
+DATA_DIR = PROJECT_DIR / "data" / "default"
 FRAME_SIZE = 150
 NUM_FRAMES = 8
 

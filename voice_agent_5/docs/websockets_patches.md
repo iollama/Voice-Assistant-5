@@ -5,7 +5,7 @@
 The patched library source lives inside this sketch at `src/` (e.g. `src/ArduinoWebsockets.h`,
 `src/tiny_websockets/`, `src/websockets_client.cpp`, etc.).
 
-Arduino IDE compiles all `.cpp` files in a sketch's `src/` subdirectory and adds `src/` to the
+Both Arduino IDE and PlatformIO (with `src_dir = voice_agent_5` in `platformio.ini`) compile all `.cpp` files in a sketch's `src/` subdirectory and add `src/` to the
 compiler include path. This means:
 
 - **No global library installation needed** for ArduinoWebsockets — the local copy is used automatically.
@@ -16,7 +16,7 @@ compiler include path. This means:
   #include "src/ArduinoWebsockets.h"   // local patched copy
   ```
 
-ArduinoJson and Adafruit NeoPixel are still installed the normal way via the Arduino Library Manager.
+ArduinoJson and Adafruit NeoPixel are still installed the normal way (Arduino Library Manager, or ``lib_deps`` in ``platformio.ini``).
 
 ### What was changed from the upstream library
 
