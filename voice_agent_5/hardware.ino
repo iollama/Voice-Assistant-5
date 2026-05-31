@@ -36,6 +36,14 @@ void setup_i2s_speaker() {
     .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_TX),
     .sample_rate = SAMPLE_RATE_OUT,
     .bits_per_sample = I2S_BITS_PER_SAMPLE_16BIT,
+    // ONLY_LEFT keeps the driver in mono mode (1 sample = 1 LRCLK period).
+    // ALL_LEFT puts the driver in stereo mode and treats consecutive 16-bit
+    // samples as L,R pairs even when we want mono — playback at 2x speed.
+    // Mono is correct for the MAX98357A path; PCM5102A users get audio on
+    // the left jack channel only (sufficient for AUX-in on most powered
+    // speakers, which sum or pick L). True stereo duplication for the PCM5102A
+    // would require mono->stereo expansion in manageSpeaker() before i2s_write
+    // and a stereo channel_format here — left as a follow-up.
     .channel_format = I2S_CHANNEL_FMT_ONLY_LEFT,
     .communication_format = (i2s_comm_format_t)(I2S_COMM_FORMAT_I2S | I2S_COMM_FORMAT_I2S_MSB),
     .intr_alloc_flags = ESP_INTR_FLAG_LEVEL1,
@@ -55,6 +63,34 @@ void setup_i2s_speaker() {
   i2s_set_pin(I2S_NUM_1, &pins);
   i2s_zero_dma_buffer(I2S_NUM_1);
   CPRINTLN("I2S Speaker Ready");
+}
+
+// ---- Audio output mute control (MAX98357A SD + PCM5102A XSMT) --------
+//
+// Both chips share the speaker I2S bus. The portal selector picks one and
+// the other is muted via its enable pin. Both must be initialized LOW
+// BEFORE setup_i2s_speaker() so the unselected chip doesn't audibly start
+// while the I2S clocks are coming up. apply_audio_output() drives the
+// chosen chip's pin HIGH once I2S is clean and silence has flushed.
+
+void setup_audio_output_pins() {
+  pinMode(AUDIO_MAX_SD_PIN, OUTPUT);
+  pinMode(AUDIO_PCM_XSMT_PIN, OUTPUT);
+  digitalWrite(AUDIO_MAX_SD_PIN, LOW);
+  digitalWrite(AUDIO_PCM_XSMT_PIN, LOW);
+}
+
+void apply_audio_output() {
+  // Flush a couple of silence blocks so the swap happens on a quiet bus.
+  writeSilence(true);
+  writeSilence(true);
+  if (g_audio_output == AUDIO_OUT_HEADPHONES) {
+    digitalWrite(AUDIO_MAX_SD_PIN, LOW);
+    digitalWrite(AUDIO_PCM_XSMT_PIN, HIGH);
+  } else {
+    digitalWrite(AUDIO_PCM_XSMT_PIN, LOW);
+    digitalWrite(AUDIO_MAX_SD_PIN, HIGH);
+  }
 }
 
 // ---- Shared silence helper -------------------------------------------

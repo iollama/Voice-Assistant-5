@@ -30,6 +30,8 @@ void load_agent_config() {
   g_volume = preferences.getInt("volume", 50);
   if (g_volume < 0) g_volume = 0;
   if (g_volume > 100) g_volume = 100;
+  g_audio_output = preferences.getUChar("audioOut", AUDIO_OUT_SPEAKER);
+  if (g_audio_output > AUDIO_OUT_HEADPHONES) g_audio_output = AUDIO_OUT_SPEAKER;
   g_voice = preferences.getString("voice", DEFAULT_VOICE);
   if (!voice_is_allowed(g_voice)) {
     CPRINTF("NVS: stored voice '%s' not in whitelist, falling back to '%s'\n",
@@ -125,6 +127,15 @@ void handle_root() {
   html += "<div class='form-group'><label for='volume'>Playback Volume: <span id='volVal'>" + String(g_volume) + "</span>%</label>";
   html += "<input type='range' id='volume' name='volume' min='0' max='100' value='" + String(g_volume) + "' oninput=\"document.getElementById('volVal').textContent=this.value\"></div>";
   html += "<button type='submit' class='btn'>Save Volume</button></form></div>";
+
+  html += "<div class='section'><h3>Audio Output</h3><form action='/saveAudioOut' method='POST'>";
+  html += "<div class='form-group'><label for='audioOut'>Output device</label>";
+  html += "<select id='audioOut' name='audioOut'>";
+  html += String("<option value='0'") + (g_audio_output == AUDIO_OUT_SPEAKER    ? " selected" : "") + ">Speaker</option>";
+  html += String("<option value='1'") + (g_audio_output == AUDIO_OUT_HEADPHONES ? " selected" : "") + ">Headphones</option>";
+  html += "</select></div>";
+  html += "<p style='color:#666;font-size:0.9em;'>Headphones routes audio to the 3.5 mm jack, for an external speaker. Only use if you have an external speaker connected.</p>";
+  html += "<button type='submit' class='btn'>Save Audio Output</button></form></div>";
 
 #if USE_DISPLAY
   html += "<div class='section'><h3>Emojis</h3>";
@@ -227,6 +238,28 @@ void handle_save_volume() {
   preferences.begin("agentConfig", false);
   preferences.putInt("volume", g_volume);
   preferences.end();
+  server.sendHeader("Location", "/", true);
+  server.send(302, "text/plain", "");
+}
+
+void handle_save_audio_out() {
+  // Reject mid-conversation — flipping mute pins while audio is flowing
+  // would cause a pop and disrupt the turn. Same idle-gate pattern as
+  // emoji uploads (emoji_in_turn).
+  AssistantState s = (AssistantState)g_state;
+  if (s == STATE_RECORDING || s == STATE_THINKING || s == STATE_SPEAKING) {
+    server.send(409, "text/plain", "Busy - finish the current turn and try again.");
+    return;
+  }
+  String v = server.arg("audioOut");
+  uint8_t newOut = (v == "1" || v == "headphones") ? AUDIO_OUT_HEADPHONES : AUDIO_OUT_SPEAKER;
+  if (newOut != g_audio_output) {
+    g_audio_output = newOut;
+    preferences.begin("agentConfig", false);
+    preferences.putUChar("audioOut", g_audio_output);
+    preferences.end();
+    apply_audio_output();
+  }
   server.sendHeader("Location", "/", true);
   server.send(302, "text/plain", "");
 }
@@ -550,6 +583,7 @@ void setup_web_server() {
   server.on("/saveApiKey", HTTP_POST, handle_save_api_key);
   server.on("/clearApiKey", HTTP_POST, handle_clear_api_key);
   server.on("/saveVolume", HTTP_POST, handle_save_volume);
+  server.on("/saveAudioOut", HTTP_POST, handle_save_audio_out);
 
 #if USE_DISPLAY
   server.on("/emojis", HTTP_GET, handle_emojis_page);

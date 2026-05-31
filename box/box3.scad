@@ -14,14 +14,15 @@ RING        = 1;
 TRAY        = 1;
 LID         = 1;
 ACCESORIES  = 1;
-PCB         = 0;
-TRAY_TYPE   = MODULES; // options = MODULES / PCB
+TRAY_TYPE  = "3DPRINT"; // [3DPRINT, PCB]
+BUILD_TYPE = "HOUSING"; // [HOUSING, PCB_EDGE_CUTS, PCB_MARKING]
 
-_RING       = PCB ? 0 : RING;
-_TRAY       = PCB ? 0 : TRAY;
-_LID        = PCB ? 0 : LID;
-_ACCESORIES = PCB ? 0 : ACCESORIES;
-_PCB        = PCB ? 1 : PCB;
+pcb_mode    = (BUILD_TYPE == "PCB_EDGE_CUTS" || BUILD_TYPE == "PCB_MARKING");
+_RING       = pcb_mode ? 0 : RING;
+_TRAY       = pcb_mode ? 0 : TRAY;
+_LID        = pcb_mode ? 0 : LID;
+_ACCESORIES = pcb_mode ? 0 : ACCESORIES;
+_PCB        = pcb_mode ? 1 : 0;
 
 /* ==========================================
    1. CONFIGURABLE PARAMETERS & COORDINATES
@@ -34,24 +35,25 @@ inline_btn_act_d  = 7.0;    // actuator stem hole diameter
 inline_btn_h      = 4.0;    // frame height
 inline_btn_top_t  = 1.2;    // top wall thickness
 inline_btn_frame_t  = 1.5;    // frame wall thickness
-inline_btn_ear_ext = 8.0;  // how far each ear extends from the wall face
+inline_btn_ear_ext = 6.0;  // how far each ear extends from the wall face
 inline_btn_ear_w   = 10.0;   // ear width (along the wall)
 inline_btn_ear_t   = 2.5;   // ear thickness
 inline_btn_ear_screw_d = 3.4; // r=1.7 clearance hole
 inline_btn_bracket_w  = 8.0;  // bracket bar width (ears stay at inline_btn_ear_w)
 inline_btn_tray_x = 50.0;   // X position on tray
-inline_btn_tray_y = 5.0;   // Y position on tray
-btn_access_l   = 27.0;     // total length of U-groove
+inline_btn_tray_y = 10.0;   // Y position on tray
+btn_access_l   = 17.0;     // total length of U-groove
 btn_access_w   = 10.0;     // width of U-groove (inner span between arms)
 btn_access_ext = 10.0;     // closed end extends this far past button center
 btn_groove_w   = 1.0;      // groove line width
 btn_groove_x   = 50.0;     // groove center X on tray
-btn_groove_y   = 15.0;      // groove center Y on tray
+btn_groove_y   = 20.0;      // groove center Y on tray
 
 // --- SHELL RING ---
 enclosure_d = 145.0;
 wall = 3.0;
-inner_h_ring = 35; //height of ring without lids
+ring_inner_h_3dprint = 35;  // cavity height (no lids) for the 3DPRINT tray — needs room for jumpers above the modules
+ring_inner_h_pcb     = 20;  // cavity height (no lids) for the PCB tray — no jumpers, can be much shorter. Tune after first print.
 
 // --- LID ---
 lid_t = 2.0;
@@ -62,7 +64,6 @@ pcb_offset = 2.0;   // inset from ring inner wall
 pcb_line_w = 0.4;   // blue reference line width
 pcb_boss_r   = 63.0; // radius of PCB mounting bosses (inward from ring bosses at 66.5mm)
 pcb_boss_rot = -10.0; // clockwise rotation offset in degrees (negative = clockwise)
-pcb_hole_d   = 2.1;  // PCB mounting hole diameter
 
 // --- COMPONENTS  COORDINATES ---
 spk_x = 1.0;
@@ -72,7 +73,18 @@ esp_x = -44.0;
 esp_y =   4.0;
 mic_y = -60.0;
 mic_boss_x = 8.0;
-amp_pos = 32.0;
+amp_pos = 30.0;
+
+// --- PCM5102A DAC ---
+pcm5102a_x      = 51.5;
+pcm5102a_y      = -22.0;
+pcm5102a_long   = 32.0;
+pcm5102a_short  = 17.33;
+pcm5102a_rot    = -114;     // rotation around (pcm5102a_x, pcm5102a_y), degrees CCW
+
+// --- HEADPHONES HOLE (PCM5102A jack passthrough on ring) ---
+headphones_hole_d    = 6.5;  // hole diameter (typical 3.5mm panel-mount jack)
+headphones_above_pcb = 3.0;  // jack center height above PCB top — a property of the jack itself, not of the housing
 
 // --- GENERIC BOSS HEIGHTS ---
 boss_h = 6.0;
@@ -109,7 +121,23 @@ inner_d = enclosure_d - (wall * 2);
 lid_screw_r = (enclosure_d/2) - 6;
 lid_angles = [45, 135, 225, 315];
 spk_boss_r = (spk_d/2) + 3.5;
+// Active cavity height depends on tray type — PCB build is shorter (no jumpers).
+inner_h_ring = (TRAY_TYPE == "PCB") ? ring_inner_h_pcb : ring_inner_h_3dprint;
 outer_h_ring = lid_t*2 + inner_h_ring;
+// PCB-tray standoffs hang from the lid; their length is set so the PCB still
+// sits at z = lid_t + esp_boss_height (same plane as the 3DPRINT case) so the
+// components on the PCB bottom continue to reach the tray viewports.
+pcb_lid_standoff_h = inner_h_ring - esp_boss_height - pcb_height;
+// PCB top plane (z, world coordinates). Used by the headphone hole and any
+// other feature anchored to the PCB rather than to the housing.
+pcb_top_z = lid_t + esp_boss_height + pcb_height;
+// Headphone hole: angle = direction from origin to the PCM5102A corner closest
+// to the ring; z = a fixed offset above the PCB top so the hole tracks the
+// PCB regardless of standoff side or ring height.
+headphones_corner_x = pcm5102a_x + (pcm5102a_long/2) * cos(pcm5102a_rot) - (pcm5102a_short/2) * sin(pcm5102a_rot);
+headphones_corner_y = pcm5102a_y + (pcm5102a_long/2) * sin(pcm5102a_rot) + (pcm5102a_short/2) * cos(pcm5102a_rot);
+headphones_angle    = atan2(headphones_corner_y, headphones_corner_x);
+headphones_hole_z   = pcb_top_z + headphones_above_pcb;
 
 /* ==========================================
    2. MAIN ASSEMBLY CALL (ZERO-OVERLAP GRID)
@@ -118,7 +146,7 @@ outer_h_ring = lid_t*2 + inner_h_ring;
 if (1==_TRAY)       render_component_tray();
 
 if (1==_ACCESORIES) {
-    if (TRAY_TYPE != PCB) {
+    if (TRAY_TYPE == "3DPRINT") {
         // Cantilever bracket needs extra x clearance: origin is top-right boss,
         // bracket extends (esp_boss_off_x*2 + 5)mm to the left of origin
         translate([enclosure_d*0.8, 30, 0]) cantilever_bracket();
@@ -132,7 +160,7 @@ if (1==_ACCESORIES) {
 }
 
 if (1==_PCB) translate([0, -(enclosure_d + 15), 0]) {
-    projection() render_pcb();
+    if (BUILD_TYPE != "PCB_MARKING") projection() render_pcb();
     pcb_reference_overlay();
 }
 
@@ -181,15 +209,9 @@ module render_component_tray() {
         }
     }
     translate([0, 0, lid_t]) {
-        if (TRAY_TYPE == MODULES) {
-            component_esp32();
-            component_tft();
-            component_amp();
-            component_mic();
-            component_inline_button();
-        }
         component_speaker();
-        if (TRAY_TYPE == PCB) component_pcb_mount();
+        if (TRAY_TYPE == "3DPRINT") component_3dprint_mount();
+        // PCB tray: PCB standoffs live on the lid, not here.
     }
 }
 
@@ -218,6 +240,10 @@ module render_shell_ring() {
         translate([esp_x, -enclosure_d/2, lid_t + inner_h_ring/2]) cube([esp_usb_w + 2, 15, 12], center=true);
         // USB cable hole between amp (45°) and screen (90°)
         rotate([0, 0, 67.5]) translate([enclosure_d/2 - 5, 0, lid_t + inner_h_ring/2]) rotate([0, 90, 0]) cylinder(d=13, h=10, $fn=40);
+        // Headphone jack hole — only when the PCM5102A is present (PCB tray)
+        if (TRAY_TYPE == "PCB")
+            rotate([0, 0, headphones_angle]) translate([enclosure_d/2 - 5, 0, headphones_hole_z])
+                rotate([0, 90, 0]) cylinder(d=headphones_hole_d, h=10, $fn=40);
     }
 }
 
@@ -317,9 +343,17 @@ module component_mic() {
         for(ix=[-mic_boss_x, mic_boss_x]) translate([ix, 0, 0]) make_boss(od=5, pilot_d=1.9, h=boss_h, n_gussets=2, gusset_ang=270);
 }
 
-module component_pcb_mount() {
+module component_pcb_mount(h) {
     for(a = lid_angles) rotate([0, 0, a + pcb_boss_rot]) translate([pcb_boss_r, 0, 0])
-        make_boss(od=5, pilot_d=1.9, h=esp_boss_height, n_gussets=1, gusset_ang=0);
+        make_boss(od=5, pilot_d=1.9, h=h, n_gussets=1, gusset_ang=0);
+}
+
+module component_3dprint_mount() {
+    component_esp32();
+    component_tft();
+    component_amp();
+    component_mic();
+    component_inline_button();
 }
 
 module mic_grille() {
@@ -335,97 +369,212 @@ module mic_grille() {
 /* ==========================================
    6. MODULE: THE PCB DISK
    ========================================== */
+module pcb_disk() {
+    cylinder(d=inner_d - pcb_offset * 2, h=pcb_height, $fn=120);
+}
+
+// 2.2mm standoff clearance hole at every boss in the design.
+module _boss_holes() {
+    d = 2.2; h = pcb_height + 2;
+    // TFT
+    translate([0, tft_y, -1])
+        for(ix=[-tft_hole_x/2, tft_hole_x/2], iy=[-tft_hole_y/2, tft_hole_y/2])
+            translate([ix, iy, 0]) cylinder(d=d, h=h, $fn=24);
+    // Speaker
+    translate([spk_x, spk_y, -1])
+        for(a = [0, 120, 240]) rotate([0, 0, a]) translate([32.0, 0, 0])
+            cylinder(d=d, h=h, $fn=24);
+    // Amp
+    translate([amp_pos, amp_pos, -1]) {
+        translate([-amp_hole_x/2, amp_hole_y_off, 0]) cylinder(d=d, h=h, $fn=24);
+        translate([ amp_hole_x/2, amp_hole_y_off, 0]) cylinder(d=d, h=h, $fn=24);
+    }
+    // Inline button
+    translate([inline_btn_tray_x, inline_btn_tray_y, -1]) {
+        _inner = inline_btn_body + inline_btn_clr * 2;
+        _screw_off = (_inner + wall*2)/2 + inline_btn_ear_ext - inline_btn_ear_w/2;
+        for(s = [1, -1]) translate([s * _screw_off, 0, 0])
+            cylinder(d=d, h=h, $fn=24);
+    }
+    // Mic
+    translate([0, mic_y, -1])
+        for(ix=[-mic_boss_x, mic_boss_x]) translate([ix, 0, 0])
+            cylinder(d=d, h=h, $fn=24);
+    // PCB mount
+    for(a = lid_angles) rotate([0, 0, a + pcb_boss_rot]) translate([pcb_boss_r, 0, -1])
+        cylinder(d=d, h=h, $fn=24);
+}
+
+// Semi-circle clearance notches where the four ring bosses meet the PCB edge.
+module _ring_boss_notches() {
+    for(a = lid_angles) rotate([0, 0, a]) translate([lid_screw_r, 0, -1])
+        cylinder(r=4.5 + pcb_offset, h=pcb_height + 2, $fn=32);
+}
+
 module render_pcb() {
     difference() {
-        cylinder(d=inner_d - pcb_offset * 2, h=pcb_height, $fn=120);
-        // Ring boss clearance notches
-        for(a = lid_angles) rotate([0, 0, a]) translate([lid_screw_r, 0, -1])
-            cylinder(r=4.5 + pcb_offset, h=pcb_height + 2, $fn=32);
-        // PCB mounting holes
-        for(a = lid_angles) rotate([0, 0, a + pcb_boss_rot]) translate([pcb_boss_r, 0, -1])
-            cylinder(d=pcb_hole_d, h=pcb_height + 2, $fn=16);
+        pcb_disk();
+        _boss_holes();
+        _ring_boss_notches();
         // Speaker clearance: deboss + Y-bracket footprint + speaker bosses
         translate([spk_x, spk_y, -1]) {
             cylinder(d=57, h=pcb_height + 2, $fn=120);        // deboss circle
             cylinder(r=8,  h=pcb_height + 2, $fn=48);         // bracket hub
             for(a = [0, 120, 240]) rotate([0, 0, a]) {
-                translate([0, -4, 0]) cube([34, 8, pcb_height + 2]); // bracket arm
-                translate([34, 0, 0]) cylinder(r=4, h=pcb_height + 2, $fn=32); // bracket tip pad
-                translate([32, 0, 0]) cylinder(d=5, h=pcb_height + 2, $fn=32); // speaker boss
+                translate([0, -4, 0]) cube([32, 8, pcb_height + 2]); // bracket arm
+                translate([32, 0, 0]) cylinder(r=4, h=pcb_height + 2, $fn=30); // bracket tip pad
+                translate([30, 0, 0]) cylinder(d=5, h=pcb_height + 2, $fn=30); // speaker boss
             }
         }
     }
 }
 
-module pcb_reference_overlay() {
-    color("blue") {
-        // TFT viewport circle
-        projection() translate([0, tft_y, 0])
-            difference() {
-                cylinder(d=tft_view_d + pcb_line_w, h=1, $fn=80);
-                cylinder(d=tft_view_d - pcb_line_w, h=2, $fn=80);
-            }
-        // TFT bosses
-        projection() for(ix=[-tft_hole_x/2, tft_hole_x/2], iy=[-tft_hole_y/2, tft_hole_y/2])
-            translate([ix, tft_y + iy, 0])
-                difference() {
-                    cylinder(d=5 + pcb_line_w, h=1, $fn=32);
-                    cylinder(d=5 - pcb_line_w, h=2, $fn=32);
-                }
-        // Mic bosses
-        projection() for(ix=[-mic_boss_x, mic_boss_x])
-            translate([ix, mic_y, 0])
-                difference() {
-                    cylinder(d=5 + pcb_line_w, h=1, $fn=32);
-                    cylinder(d=5 - pcb_line_w, h=2, $fn=32);
-                }
-        // Amp bosses
-        projection() translate([amp_pos, amp_pos, 0])
-            for(sx=[-1, 1]) translate([sx * amp_hole_x/2, amp_hole_y_off, 0])
-                difference() {
-                    cylinder(d=5 + pcb_line_w, h=1, $fn=32);
-                    cylinder(d=5 - pcb_line_w, h=2, $fn=32);
-                }
-        // Button groove inner outline
-        projection() {
-            translate([btn_groove_x - btn_access_w/2 - pcb_line_w, btn_groove_y - btn_access_ext, 0])
-                cube([pcb_line_w, btn_access_l, 1]);
-            translate([btn_groove_x + btn_access_w/2, btn_groove_y - btn_access_ext, 0])
-                cube([pcb_line_w, btn_access_l, 1]);
-            translate([btn_groove_x, btn_groove_y - btn_access_ext, 0])
-                intersection() {
-                    difference() {
-                        cylinder(r=btn_access_w/2 + pcb_line_w, h=1, $fn=32);
-                        cylinder(r=btn_access_w/2,               h=2, $fn=32);
-                    }
-                    translate([-(btn_access_w + pcb_line_w), -(btn_access_w + pcb_line_w), 0])
-                        cube([(btn_access_w + pcb_line_w)*2, btn_access_w + pcb_line_w, 2]);
-                }
+module _marking_shapes() {
+    // TFT viewport circle
+    projection() translate([0, tft_y, 0])
+        difference() {
+            cylinder(d=tft_view_d + pcb_line_w, h=1, $fn=80);
+            cylinder(d=tft_view_d - pcb_line_w, h=2, $fn=80);
         }
-        // Button bracket bosses
-        projection() translate([inline_btn_tray_x, inline_btn_tray_y, 0]) {
-            _inner = inline_btn_body + inline_btn_clr * 2;
-            _screw_off = (_inner + wall*2)/2 + inline_btn_ear_ext - inline_btn_ear_w/2;
-            for(s=[1,-1]) translate([s * _screw_off, 0, 0])
-                difference() {
-                    cylinder(d=5 + pcb_line_w, h=1, $fn=32);
-                    cylinder(d=5 - pcb_line_w, h=2, $fn=32);
-                }
-        }
-        // ESP32 board outline
-        projection() translate([esp_x, esp_y, 0])
-            difference() {
-                translate([-esp_w/2 - pcb_line_w, -esp_l/2 - pcb_line_w, 0])
-                    cube([esp_w + pcb_line_w*2, esp_l + pcb_line_w*2, 1]);
-                translate([-esp_w/2, -esp_l/2, -1])
-                    cube([esp_w, esp_l, 3]);
-            }
-        // PCB mount bosses
-        projection() for(a = lid_angles) rotate([0, 0, a + pcb_boss_rot]) translate([pcb_boss_r, 0, 0])
+    // TFT bosses
+    projection() for(ix=[-tft_hole_x/2, tft_hole_x/2], iy=[-tft_hole_y/2, tft_hole_y/2])
+        translate([ix, tft_y + iy, 0])
             difference() {
                 cylinder(d=5 + pcb_line_w, h=1, $fn=32);
                 cylinder(d=5 - pcb_line_w, h=2, $fn=32);
             }
+    // TFT header row (GC9A01: 8 pins at 2.54mm pitch, ~6mm above top mounting hole)
+    projection() translate([0, tft_y + 21, 0])
+        for(i = [0:7]) translate([(i - 3.5) * 2.54, 0, 0])
+            cylinder(d=1, h=1, $fn=20);
+    // Mic bosses
+    projection() for(ix=[-mic_boss_x, mic_boss_x])
+        translate([ix, mic_y, 0])
+            difference() {
+                cylinder(d=5 + pcb_line_w, h=1, $fn=32);
+                cylinder(d=5 - pcb_line_w, h=2, $fn=32);
+            }
+    // INMP441 mic board outline (14mm circle)
+    projection() translate([0, mic_y, 0])
+        difference() {
+            cylinder(d=14 + pcb_line_w, h=1, $fn=80);
+            cylinder(d=14 - pcb_line_w, h=2, $fn=80);
+        }
+    // INMP441 pin holes (3 pads on each side at 2.54mm pitch)
+    projection() translate([0, mic_y, 0])
+        for(ix=[-4, 4], iy=[-2.54, 0, 2.54]) translate([ix, iy, 0])
+            cylinder(d=1, h=1, $fn=20);
+    // Amp bosses
+    projection() translate([amp_pos, amp_pos, 0])
+        for(sx=[-1, 1]) translate([sx * amp_hole_x/2, amp_hole_y_off, 0])
+            difference() {
+                cylinder(d=5 + pcb_line_w, h=1, $fn=32);
+                cylinder(d=5 - pcb_line_w, h=2, $fn=32);
+            }
+    // AMP board outline (MAX98357A 17.7x19.1mm; speaker output edge faces -Y)
+    projection() translate([amp_pos, amp_pos + amp_hole_y_off, 0])
+        difference() {
+            translate([-17.7/2 - pcb_line_w, -2.4 - pcb_line_w, 0])
+                cube([17.7 + pcb_line_w*2, 19.1 + pcb_line_w*2, 1]);
+            translate([-17.7/2, -2.4, -1])
+                cube([17.7, 19.1, 3]);
+        }
+    // AMP header row (7 pins at 2.54mm pitch, near +Y edge opposite speaker output)
+    projection() translate([amp_pos, amp_pos + amp_hole_y_off + 16.7 - 2.54, 0])
+        for(i = [-3:3]) translate([i * 2.54, 0, 0])
+            cylinder(d=1, h=1, $fn=20);
+    // Button groove inner outline
+    projection() {
+        translate([btn_groove_x - btn_access_w/2 - pcb_line_w, btn_groove_y - btn_access_ext, 0])
+            cube([pcb_line_w, btn_access_l, 1]);
+        translate([btn_groove_x + btn_access_w/2, btn_groove_y - btn_access_ext, 0])
+            cube([pcb_line_w, btn_access_l, 1]);
+        translate([btn_groove_x, btn_groove_y - btn_access_ext, 0])
+            intersection() {
+                difference() {
+                    cylinder(r=btn_access_w/2 + pcb_line_w, h=1, $fn=32);
+                    cylinder(r=btn_access_w/2,               h=2, $fn=32);
+                }
+                translate([-(btn_access_w + pcb_line_w), -(btn_access_w + pcb_line_w), 0])
+                    cube([(btn_access_w + pcb_line_w)*2, btn_access_w + pcb_line_w, 2]);
+            }
+    }
+    // Button bracket bosses
+    projection() translate([inline_btn_tray_x, inline_btn_tray_y, 0]) {
+        _inner = inline_btn_body + inline_btn_clr * 2;
+        _screw_off = (_inner + wall*2)/2 + inline_btn_ear_ext - inline_btn_ear_w/2;
+        for(s=[1,-1]) translate([s * _screw_off, 0, 0])
+            difference() {
+                cylinder(d=5 + pcb_line_w, h=1, $fn=32);
+                cylinder(d=5 - pcb_line_w, h=2, $fn=32);
+            }
+    }
+    // Button center dot
+    projection() translate([inline_btn_tray_x, inline_btn_tray_y, 0])
+        cylinder(d=2, h=1, $fn=24);
+    // Button pins (4 pins in a square, 5.08mm apart)
+    projection() translate([inline_btn_tray_x, inline_btn_tray_y, 0])
+        for(ix=[-2.54, 2.54], iy=[-2.54, 2.54]) translate([ix, iy, 0])
+            cylinder(d=1, h=1, $fn=20);
+    // Button body outline (12mm square)
+    projection() translate([inline_btn_tray_x, inline_btn_tray_y, 0])
+        difference() {
+            translate([-(inline_btn_body + pcb_line_w)/2, -(inline_btn_body + pcb_line_w)/2, 0])
+                cube([inline_btn_body + pcb_line_w, inline_btn_body + pcb_line_w, 1]);
+            translate([-(inline_btn_body - pcb_line_w)/2, -(inline_btn_body - pcb_line_w)/2, -1])
+                cube([inline_btn_body - pcb_line_w, inline_btn_body - pcb_line_w, 3]);
+        }
+    // PCM5102A board outline (long axis along X, jack on outer short edge near ring)
+    projection() translate([pcm5102a_x, pcm5102a_y, 0]) rotate([0, 0, pcm5102a_rot])
+        difference() {
+            translate([-pcm5102a_long/2 - pcb_line_w, -pcm5102a_short/2 - pcb_line_w, 0])
+                cube([pcm5102a_long + pcb_line_w*2, pcm5102a_short + pcb_line_w*2, 1]);
+            translate([-pcm5102a_long/2, -pcm5102a_short/2, -1])
+                cube([pcm5102a_long, pcm5102a_short, 3]);
+        }
+    // PCM5102A 9-pin header (bottom long side, 2.54mm pitch)
+    projection() translate([pcm5102a_x, pcm5102a_y, 0]) rotate([0, 0, pcm5102a_rot])
+        translate([0, -(pcm5102a_short/2 - 1.27), 0])
+            for(i = [0:8]) translate([(i - 4) * 2.54, 0, 0])
+                cylinder(d=1, h=1, $fn=20);
+    // PCM5102A 6-pin header (inner short side, 2.54mm pitch)
+    projection() translate([pcm5102a_x, pcm5102a_y, 0]) rotate([0, 0, pcm5102a_rot])
+        translate([-pcm5102a_long/2 + 1.27, 0, 0])
+            for(i = [0:5]) translate([0, (i - 2.5) * 2.54, 0])
+                cylinder(d=1, h=1, $fn=20);
+    // ESP32 board outline
+    projection() translate([esp_x, esp_y, 0])
+        difference() {
+            translate([-esp_w/2 - pcb_line_w, -esp_l/2 - pcb_line_w, 0])
+                cube([esp_w + pcb_line_w*2, esp_l + pcb_line_w*2, 1]);
+            translate([-esp_w/2, -esp_l/2, -1])
+                cube([esp_w, esp_l, 3]);
+        }
+    // ESP32 pin headers (22 pins per side at 2.54mm pitch / 0.1in)
+    projection() translate([esp_x, esp_y, 0])
+        for(ix=[-esp_w/2 + 1.27, esp_w/2 - 1.27], i=[0:21])
+            translate([ix, (i - 10.5) * 2.54, 0])
+                cylinder(d=1, h=1, $fn=20);
+    // PCB mount bosses
+    projection() for(a = lid_angles) rotate([0, 0, a + pcb_boss_rot]) translate([pcb_boss_r, 0, 0])
+        difference() {
+            cylinder(d=5 + pcb_line_w, h=1, $fn=32);
+            cylinder(d=5 - pcb_line_w, h=2, $fn=32);
+        }
+}
+
+module pcb_reference_overlay() {
+    if (BUILD_TYPE == "PCB_MARKING") {
+        // Base on the actual PCB outline so the speaker cutout (and the boss /
+        // ring-notch holes already in render_pcb) are inherited — anything that
+        // falls inside the speaker bracket footprint (e.g. the three speaker
+        // boss positions) is correctly absent from the marking.
+        difference() {
+            projection() render_pcb();
+            _marking_shapes();
+        }
+    } else {
+        color("blue") _marking_shapes();
     }
 }
 
@@ -437,6 +586,11 @@ module render_circular_lid() {
         cylinder(d=inner_d + 1.3, h=lid_t, $fn=120);
         for(a = lid_angles) rotate([0, 0, a]) translate([lid_screw_r, 0, -1]) cylinder(r=1.7, h=10, $fn=32);
     }
+    // PCB-tray: standoffs hang from the lid. Rendered pointing UP in the print
+    // orientation; when the lid is installed (flipped) they reach DOWN into the
+    // cavity and the PCB hangs from their tips.
+    if (TRAY_TYPE == "PCB")
+        translate([0, 0, lid_t]) component_pcb_mount(h=pcb_lid_standoff_h);
 }
 
 /* ==========================================

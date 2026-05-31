@@ -21,7 +21,8 @@ Versions used to build and flash this project. Other versions may work; these ar
 | ArduinoJson | 7.4.3 | Benoit Blanchon |
 | Adafruit NeoPixel | 1.15.4 | Adafruit |
 | GFX Library for Arduino | 1.6.5 | moononournation |
-| QRCode | 0.0.1 | ricmoo |
+
+QR rendering uses the `esp_qrcode` API bundled with the esp32 board package (3.3.8) — no separate library install.
 
 ## Option B — PlatformIO
 
@@ -34,7 +35,8 @@ All versions are pinned in [platformio.ini](platformio.ini); `pio run` resolves 
 | ArduinoJson | ^7.4.3 | |
 | Adafruit NeoPixel | ^1.15.4 | |
 | GFX Library for Arduino | ^1.6.5 | |
-| QRCode | ^0.0.1 | ricmoo |
+
+QR rendering uses the `esp_qrcode` API bundled with the espressif32 platform — not declared in `lib_deps`.
 
 ## Vendored Library (both toolchains)
 

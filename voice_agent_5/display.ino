@@ -3,7 +3,9 @@
 // =====================================================================
 #if USE_DISPLAY
 
-#include "qrcode.h"
+// Bundled espressif esp_qrcode API from arduino-esp32 (esp_qrcode_generate,
+// esp_qrcode_get_module, ESP_QRCODE_ECC_LOW). Used by render_qr() below.
+#include <qrcode.h>
 
 // Count consecutive frame files /<dir>/<emotion>_<n>.bin starting at n=0. Stops on first gap.
 static uint8_t emoji_count_frames_in_dir(const char* dir, const char* name) {
@@ -211,9 +213,16 @@ static void emoji_init_display() {
 
 static int  s_boot_log_y       = 60;
 static bool s_boot_log_started = false;
+static bool s_boot_log_locked  = false;   // true while a QR screen owns the display; suppresses appends
+
+// Called when a QR screen is dismissed so the flag reflects current ownership.
+void display_boot_log_unlock() {
+    s_boot_log_locked = false;
+}
 
 void display_boot_status(const char* msg) {
     if (!g_emoji_ready) return;
+    if (s_boot_log_locked) return;
     if (!s_boot_log_started) {
         gfx->fillScreen(RGB565_BLACK);
         s_boot_log_started = true;
@@ -228,24 +237,33 @@ void display_boot_status(const char* msg) {
 
 // ---- QR code renderer ------------------------------------------------
 // Renders a QR centred horizontally at x_center, top edge at y_top.
+//
+// Uses the espressif esp_qrcode API bundled with arduino-esp32 (no external
+// library). esp_qrcode_generate() takes a config + text and invokes
+// display_func synchronously once encoding completes; the callback only
+// receives the QR handle, so module_px / x_center / y_top are passed via
+// file-scope statics. render_qr is only ever called from Core 1's loop()
+// (display lives on Core 1) and esp_qrcode_generate is synchronous, so no
+// re-entrancy concerns.
 
-static void render_qr(const char* text, int version, int module_px, int x_center, int y_top) {
-    QRCode qrcode;
-    uint8_t qr_data[qrcode_getBufferSize(3)];   // sized for version 3; fits version 2 too
-    if (qrcode_initText(&qrcode, qr_data, version, ECC_LOW, text) != 0) return;
+static int s_qr_module_px = 0;
+static int s_qr_x_center  = 0;
+static int s_qr_y_top     = 0;
 
-    int total_px = (qrcode.size + 8) * module_px;   // 4-module quiet zone each side
-    int x0 = x_center - total_px / 2;
+static void render_qr_display_cb(esp_qrcode_handle_t qrcode) {
+    int size = esp_qrcode_get_size(qrcode);
+    int total_px = (size + 8) * s_qr_module_px;   // 4-module quiet zone each side
+    int x0 = s_qr_x_center - total_px / 2;
 
-    gfx->fillRect(x0, y_top, total_px, total_px, RGB565_WHITE);
+    gfx->fillRect(x0, s_qr_y_top, total_px, total_px, RGB565_WHITE);
 
-    for (int r = 0; r < qrcode.size; r++) {
-        for (int c = 0; c < qrcode.size; c++) {
-            if (qrcode_getModule(&qrcode, c, r)) {
+    for (int r = 0; r < size; r++) {
+        for (int c = 0; c < size; c++) {
+            if (esp_qrcode_get_module(qrcode, c, r)) {
                 gfx->fillRect(
-                    x0 + (c + 4) * module_px,
-                    y_top + (r + 4) * module_px,
-                    module_px, module_px,
+                    x0 + (c + 4) * s_qr_module_px,
+                    s_qr_y_top + (r + 4) * s_qr_module_px,
+                    s_qr_module_px, s_qr_module_px,
                     RGB565_BLACK
                 );
             }
@@ -253,11 +271,24 @@ static void render_qr(const char* text, int version, int module_px, int x_center
     }
 }
 
+static void render_qr(const char* text, int version, int module_px, int x_center, int y_top) {
+    s_qr_module_px = module_px;
+    s_qr_x_center  = x_center;
+    s_qr_y_top     = y_top;
+
+    esp_qrcode_config_t cfg = ESP_QRCODE_CONFIG_DEFAULT();
+    cfg.display_func       = render_qr_display_cb;
+    cfg.max_qrcode_version = version;
+    cfg.qrcode_ecc_level   = ESP_QRCODE_ECC_LOW;
+    esp_qrcode_generate(&cfg, text);
+}
+
 // ---- Network info screen ---------------------------------------------
 // QR of http://IP (version 2, 5px/module = 165px), IP text, token count.
 
 void display_info_screen() {
     if (!g_emoji_ready) return;
+    s_boot_log_locked = true;   // QR screen owns the display now — no more boot log appends
     gfx->fillScreen(RGB565_BLACK);
 
     // QR: http://<IP>
@@ -288,6 +319,7 @@ void display_info_screen() {
 
 void display_captive_portal_screen(const char* ssid) {
     if (!g_emoji_ready) return;
+    s_boot_log_locked = true;   // QR screen owns the display now — no more boot log appends
     gfx->fillScreen(RGB565_BLACK);
 
     // WiFi QR — scanning auto-joins the AP; captive portal opens setup page

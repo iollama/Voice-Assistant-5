@@ -44,12 +44,35 @@
 #if USE_DISPLAY
 #include <Arduino_GFX_Library.h>
 #include <LittleFS.h>
+// Bundled espressif esp_qrcode API. Included here (not just from display.ino)
+// so the Arduino IDE auto-prototyper sees esp_qrcode_handle_t before it
+// inserts the forward declaration for render_qr_display_cb at the top of
+// the merged translation unit. PlatformIO doesn't need this but is unharmed
+// by it (include guard makes the duplicate include in display.ino a no-op).
+#include <qrcode.h>
 #endif
 
 #include "esp32-hal-psram.h"
 #include "driver/i2s.h"
 #include "mbedtls/base64.h"
 #include "ring_buffer.h"
+
+// =====================================================================
+// ASSISTANT STATE
+// =====================================================================
+// Declared here (before any function definitions) so the Arduino IDE
+// auto-prototyper sees `AssistantState` when it inserts the forward
+// declaration for setAssistantState(AssistantState) near the top of the
+// translation unit. Moving this later in the file breaks the Arduino IDE
+// build (PlatformIO is unaffected).
+enum AssistantState : uint8_t {
+  STATE_WIFI_WAIT = 0,
+  STATE_WIFI_CONFIG,
+  STATE_READY_FOR_INPUT,
+  STATE_RECORDING,
+  STATE_THINKING,
+  STATE_SPEAKING
+};
 
 // =====================================================================
 // GLOBAL WEBSERVER & NVS
@@ -142,15 +165,6 @@ bool voice_is_allowed(const String& v) {
 
 Adafruit_NeoPixel statusPixel(1, STATUS_RGB_LED_PIN, NEO_GRB + NEO_KHZ800);
 
-enum AssistantState : uint8_t {
-  STATE_WIFI_WAIT = 0,
-  STATE_WIFI_CONFIG,
-  STATE_READY_FOR_INPUT,
-  STATE_RECORDING,
-  STATE_THINKING,
-  STATE_SPEAKING
-};
-
 volatile AssistantState g_state = STATE_WIFI_WAIT;
 
 // =====================================================================
@@ -227,6 +241,21 @@ static const gpio_num_t I2S_SD_IN = GPIO_NUM_40;
 static const gpio_num_t I2S_BCLK_OUT = GPIO_NUM_47;
 static const gpio_num_t I2S_LRCLK_OUT = GPIO_NUM_21;
 static const gpio_num_t I2S_DOUT_OUT = GPIO_NUM_17;
+
+// Audio output mute pins (PCM5102A + MAX98357A coexistence on shared I2S bus).
+// Both default LOW so a half-booted device is silent; apply_audio_output() drives
+// HIGH on the selected chip's enable pin. Existing breadboard builds tie MAX SD
+// straight to 3.3V and ignore GPIO_NUM_38 entirely — the default selection
+// (Speaker) drives GPIO_NUM_38 HIGH so they behave identically.
+static const gpio_num_t AUDIO_MAX_SD_PIN   = GPIO_NUM_38;  // MAX98357A SD: HIGH = enabled (stereo-average)
+static const gpio_num_t AUDIO_PCM_XSMT_PIN = GPIO_NUM_39;  // PCM5102A XSMT: HIGH = un-muted
+
+enum AudioOutput : uint8_t {
+  AUDIO_OUT_SPEAKER    = 0,  // MAX98357A
+  AUDIO_OUT_HEADPHONES = 1,  // PCM5102A
+};
+
+volatile uint8_t g_audio_output = AUDIO_OUT_SPEAKER;
 
 PSRAMRingBuffer* in_ring_buf = nullptr;
 PSRAMRingBuffer* out_ring_buf = nullptr;
@@ -338,10 +367,16 @@ void setup() {
     while (true) { delay(1000); }
   }
 
+  // Mute both audio output chips BEFORE the I2S clocks come up so the
+  // unselected chip doesn't audibly start. apply_audio_output() un-mutes
+  // the selected one after the first silence flush.
+  setup_audio_output_pins();
+
   // Speaker I2S first so the amp sees a stable clock + silence during the
   // WiFi-pulse phase (otherwise unclocked pins pick up SPI/EMI as crackling).
   setup_i2s_speaker();
   writeSilence(true);
+  apply_audio_output();
 
   init_wifi_and_time();
   setup_i2s_mic();
@@ -407,6 +442,7 @@ void loop() {
     } else {
       if (was_showing_info) {
         g_loaded_emotion = 0xFF;   // force full emoji reload now that screen is ours again
+        display_boot_log_unlock();   // QR screen dismissed — flag no longer reflects display ownership
         was_showing_info = false;
       }
       info_drawn = false;

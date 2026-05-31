@@ -39,7 +39,8 @@ The assistant can also call **OpenAI function tools** during a response — curr
 | ESP32-S3 N16R8 | Dev board with 16 MB flash and 8 MB OPI PSRAM |buy the N16R8 varient | [Ali](https://s.click.aliexpress.com/e/_c3gDaUQx), [Amazon](https://amzn.to/4epGav2) |
 | INMP441 | I2S MEMS microphone | - | [Ali](https://s.click.aliexpress.com/e/_c4aRLzSX), [Amazon](https://amzn.to/4tT7aI8) |
 | MAX98357A | I2S audio amplifier breakout | Better to buy soldered| [Ali](https://s.click.aliexpress.com/e/_c3a1cRKJ), [Amazon](https://amzn.to/4w4aq4O) |
-| Speaker | 1-3W 4/8-ohm or similar small speaker | Up to 57mm, use foam for pressure if the speaker is too thin | [Ali](https://s.click.aliexpress.com/e/_c3a1cRKJ), [Amazon](https://amzn.to/49pMOhj) |
+| PCM5102A (optional) | I2S DAC breakout (GY-PCM5102A) with 3.5 mm stereo jack | Skip if you only want the onboard speaker. Drives headphones or any powered speaker (e.g. JBL Go/Clip/Flip) via a 3.5 mm AUX cable. | [Ali](https://s.click.aliexpress.com/e/_c3kweqLP), [Amazon](https://amzn.to/4dvBhQi) |
+| Speaker | 1-3W 4/8-ohm or similar small speaker | Up to 57mm, use foam for pressure if the speaker is too thin | [Ali](https://s.click.aliexpress.com/e/_c4tSecWd), [Amazon](https://amzn.to/49pMOhj) |
 | GC9A01 | Round TFT display, 240x240, SPI | Get the square one | [Ali](https://s.click.aliexpress.com/e/_c3MHXSVp), [Amazon](https://amzn.to/3RhVD6A) |
 | WS2812 NeoPixel | RGB LED (built-in on most ESP32-S3 dev boards) | Nothing to buy, it's built in | - |
 | Tactile Push Button | 12x12 mm momentary switch (PTT) | - | [Ali](https://s.click.aliexpress.com/e/_c3t0W2xV), [Amazon](https://amzn.to/4unYv0b) |
@@ -65,13 +66,31 @@ The assistant can also call **OpenAI function tools** during a response — curr
 
 | MAX98357A Pin | ESP32-S3 Pin | Note |
 |--------------|-------------|------|
-| DIN | GPIO 17 | I2S data out |
-| BCLK | GPIO 47 | Bit clock |
-| LRC | GPIO 21 | Word select / LRCLK |
-| SD | 3.3V | Amp enabled, left channel |
+| DIN | GPIO 17 | I2S data out (shared with PCM5102A if both populated) |
+| BCLK | GPIO 47 | Bit clock (shared) |
+| LRC | GPIO 21 | Word select / LRCLK (shared) |
+| SD | 3.3V *or* GPIO 38 | 3.3V keeps the amp always on (legacy wiring). Tie to GPIO 38 instead if you've also populated the PCM5102A and want to switch between them from the portal. |
 | VIN | 5V | |
 | GAIN | Not connected | Default 9 dB gain |
 | GND | GND | |
+
+### Headphone DAC (optional) -- PCM5102A
+
+Populate this only if you want a headphone jack or want to feed a powered speaker (e.g. JBL) via 3.5 mm AUX. With both chips installed, the portal *Audio Output* selector picks which one plays; firmware mutes the other via its enable pin.
+
+| PCM5102A Pin | ESP32-S3 Pin | Note |
+|--------------|-------------|------|
+| DIN | GPIO 17 | I2S data out (shared with MAX98357A) |
+| BCK | GPIO 47 | Bit clock (shared) |
+| LCK | GPIO 21 | Word select / LRCLK (shared) |
+| SCK | GND | Use internal PLL (no MCLK from ESP32) |
+| XSMT | GPIO 39 | Active-low mute; HIGH = play |
+| FMT, FLT, DEMP | GND (factory-set on most breakouts) | I2S format, normal filter, no de-emphasis |
+| VIN | 3.3V | Most GY breakouts accept 3.3V or 5V; check silkscreen |
+| GND | GND | |
+| L / R / GND | 3.5 mm stereo jack | Built into the breakout PCB |
+
+The portal *Audio Output* dropdown (under *Volume*) selects Speaker (MAX98357A) or Headphones (PCM5102A). The choice persists across reboots. Changes are rejected with HTTP 409 during an active conversation -- save while idle (green LED).
 
 ### Display -- GC9A01
 
@@ -93,12 +112,14 @@ The assistant can also call **OpenAI function tools** during a response — curr
 | PTT Button | Signal | GPIO 1 | INPUT_PULLUP, active LOW |
 | PTT Button | GND | GND | |
 | NeoPixel RGB LED | Data | GPIO 48 | Built-in on most S3 boards, no jumper needed |
+| MAX98357A SD (optional) | Enable | GPIO 38 | Only needed if you populated the PCM5102A and want runtime switching. Otherwise tie SD to 3.3V. |
+| PCM5102A XSMT (optional) | Mute | GPIO 39 | Only populated when PCM5102A is installed. HIGH = play, LOW = mute. |
 
 ### Power Summary
 
 | Rail | Components |
 |------|-----------|
-| 3.3V | INMP441, GC9A01, MAX98357A SD pin, GC9A01 BLK |
+| 3.3V | INMP441, GC9A01, MAX98357A SD pin (legacy wiring only), GC9A01 BLK, PCM5102A VIN (optional) |
 | 5V | MAX98357A VIN |
 | GND | All components (common ground) |
 
@@ -139,7 +160,8 @@ Install libraries via Arduino Library Manager (`Sketch > Include Library > Manag
 | **ArduinoJson** (v6.x+) | Benoit Blanchon | JSON parsing for API messages |
 | **Adafruit NeoPixel** | Adafruit | RGB status LED driver |
 | **Arduino_GFX_Library** | moononournation | Display driver (required only when `USE_DISPLAY 1`) |
-| **QRCode** | ricmoo | QR code generator (required only when `USE_DISPLAY 1`) |
+
+QR codes (captive-portal join + network info screen) use the `esp_qrcode` API bundled with the ESP32 board package -- no separate library install.
 
 **ArduinoWebsockets** is **vendored** in the `src/` directory with two critical bug fixes applied. Do **not** install it via Library Manager -- the sketch includes the local patched copy automatically. See [websockets_patches.md](voice_agent_5/docs/websockets_patches.md) for details.
 
@@ -331,8 +353,11 @@ These are configurable at runtime via the web portal and persist across reboots:
 
 The `box/` directory contains files for a circular 145 mm enclosure designed to hold all components:
 
-- **`box/box3.scad`** -- Parametric OpenSCAD source. Customizable dimensions, component positions, and clearances. Set `part_to_print` to `"tray"`, `"ring"`, `"lid"`, or `"all"`.
-- **`box/box3.stl`** -- Pre-generated STL mesh, ready to slice and print.
+- **`box/box3.scad`** -- Parametric OpenSCAD source. Customizable dimensions, component positions, and clearances.
+- **`box/box3.stl`** -- Pre-generated STL for the **breadboard/jumper-wire** build. Tray carries printed bosses for the ESP32, display, amp, mic, and button.
+- **`box/box3_pcb.stl`** -- Pre-generated STL for the **PCB** build. Tray is flat (only the speaker bosses remain); the four PCB standoffs hang from the lid so the PCB sits at the same height above the tray as in the breadboard build. Ring includes a 3.5 mm jack passthrough aligned with the optional PCM5102A DAC.
+
+Pick whichever STL matches the build you're doing -- you don't need to render anything yourself. If you do want to re-render: open `box3.scad` in OpenSCAD and toggle the two top-level selectors `BUILD_TYPE` (`HOUSING`, `PCB_EDGE_CUTS`, `PCB_MARKING`) and `TRAY_TYPE` (`3DPRINT`, `PCB`). The `RING`, `TRAY`, `LID`, and `ACCESORIES` flags at the top of the file control which parts render in a `HOUSING` build.
 
 The design uses a tray/ring/lid construction: the tray holds all components (ESP32, display, speaker, mic, amplifier, button) facing down, the ring forms the enclosure wall with USB cutout, and the lid closes the back. Parts are secured with M3 screws into printed bosses.
 
