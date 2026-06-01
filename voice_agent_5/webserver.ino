@@ -51,114 +51,79 @@ void load_agent_config() {
   }
 }
 
+// Main settings page HTML/CSS/JS lives in root_page.h (static PROGMEM), served
+// verbatim. Live values are delivered separately via GET /api/config; saves use
+// the existing form-POST handlers below. Kept in a .h for the same reason as
+// emojis_page.h (Arduino auto-prototyper chokes on embedded JS in .ino files).
+#include "root_page.h"
 void handle_root() {
-  String html = R"rawliteral(
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <title>Voice Agent - Config</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <style>
-        body { font-family: Arial, sans-serif; background-color: #f4f4f4; margin: 0; padding: 20px; }
-        .container { background-color: #fff; max-width: 600px; margin: auto; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        h2, h3 { color: #333; }
-        .form-group { margin-bottom: 15px; }
-        .form-group-inline { display: flex; align-items: center; }
-        .form-group-inline label { margin-right: 10px; font-weight: normal; }
-        label { display: block; margin-bottom: 5px; font-weight: bold; }
-        input[type="text"], input[type="password"], input[type="number"], textarea { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }
-        textarea { resize: vertical; min-height: 220px; }
-        .btn { background-color: #007bff; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; width: 100%; box-sizing: border-box; }
-        .btn:hover { background-color: #0056b3; }
-        .btn-danger { background-color: #dc3545; }
-        .btn-danger:hover { background-color: #c82333; }
-        .btn-secondary { background-color: #6c757d; }
-        .btn-secondary:hover { background-color: #5a6268; }
-        hr { border: 0; border-top: 1px solid #eee; margin: 20px 0; }
-        .section { border: 1px solid #ddd; border-radius: 8px; padding: 20px; margin-bottom: 20px; }
-    </style>
-</head>
-<body>
-    <div class="container">
-)rawliteral";
+  server.sendHeader("Cache-Control", "no-cache");
+  server.send_P(200, "text/html; charset=utf-8", ROOT_PAGE_HTML);
+}
 
-  html += "<h2>Voice Agent Settings</h2>";
-  if (ap_mode) {
-    html += "<p>First, connect this device to your WiFi network.</p>";
-  } else {
-    html += "<p>Device is connected to <b>" + WiFi.SSID() + "</b>.</p>";
+// Escape a string for safe embedding inside a JSON double-quoted value.
+static String json_escape(const String& in) {
+  String out;
+  out.reserve(in.length() + 8);
+  for (size_t i = 0; i < in.length(); i++) {
+    char c = in[i];
+    switch (c) {
+      case '"':  out += "\\\""; break;
+      case '\\': out += "\\\\"; break;
+      case '\n': out += "\\n";  break;
+      case '\r': out += "\\r";  break;
+      case '\t': out += "\\t";  break;
+      default:
+        if ((uint8_t)c < 0x20) {
+          char buf[7];
+          snprintf(buf, sizeof(buf), "\\u%04x", (unsigned)(uint8_t)c);
+          out += buf;
+        } else {
+          out += c;
+        }
+    }
   }
+  return out;
+}
 
-  html += R"rawliteral(
-        <div class="section">
-            <h3>WiFi Network</h3>
-            <form action="/save" method="POST">
-                <div class="form-group"><label for="ssid">SSID</label><input type="text" id="ssid" name="ssid" required></div>
-                <div class="form-group"><label for="pass">Password</label><input type="password" id="pass" name="pass"></div>
-                <button type="submit" class="btn">Save & Restart</button>
-            </form>
-            <hr><form action="/delete" method="POST"><button type="submit" class="btn btn-danger">Forget Network</button></form>
-        </div>
-)rawliteral";
-
-  html += "<div class='section'><h3>Agent Management</h3><form action='/saveAgent' method='POST'>";
-  html += "<div class='form-group'><label for='sysPrompt'>System Prompt</label><textarea id='sysPrompt' name='sysPrompt' maxlength='12288' required>" + g_sys_instruction + "</textarea></div>";
-  html += "<div class='form-group'><label for='voice'>Voice</label><select id='voice' name='voice'>";
+// ---- GET /api/config -------------------------------------------------
+// Current settings for the static main page to populate itself with.
+// Never returns the API key itself — only whether a custom key is set.
+void handle_config() {
+  String json = "{";
+  json += "\"sysPrompt\":\"" + json_escape(g_sys_instruction) + "\",";
+  json += "\"voice\":\"" + json_escape(g_voice) + "\",";
+  json += "\"voices\":[";
   for (size_t i = 0; i < VOICE_OPTIONS_COUNT; ++i) {
-    const char* sel = (g_voice == VOICE_OPTIONS[i].id) ? " selected" : "";
-    html += "<option value='" + String(VOICE_OPTIONS[i].id) + "'" + sel + ">" + String(VOICE_OPTIONS[i].label) + "</option>";
+    if (i) json += ",";
+    json += "{\"id\":\"" + String(VOICE_OPTIONS[i].id) + "\",";
+    json += "\"label\":\"" + json_escape(VOICE_OPTIONS[i].label) + "\"}";
   }
-  html += "</select></div>";
-  String persist_checked = g_persist_conversation ? "checked" : "";
-  html += "<div class='form-group-inline'><input type='checkbox' id='persist' name='persist' value='true' " + persist_checked + "><label for='persist'>Persist Conversation</label></div>";
-  String verbose_checked = g_verbose_logging ? "checked" : "";
-  html += "<div class='form-group-inline'><input type='checkbox' id='verbose' name='verbose' value='true' " + verbose_checked + "><label for='verbose'>Verbose Logging</label></div>";
-  html += "<br><button type='submit' class='btn'>Save Agent Settings</button></form><hr>";
-  html += "<form action='/restoreAgent' method='POST' onsubmit=\"return confirm('Restore default agent settings?');\"><button type='submit' class='btn btn-secondary'>Restore Defaults</button></form></div>";
-
-  html += "<div class='section'><h3>OpenAI API Key</h3><form action='/saveApiKey' method='POST'>";
-  html += "<p>Status: <b>" + String(g_api_key.length() > 0 ? "Custom key is set" : "Using default key") + "</b></p>";
-  html += "<div class='form-group'><label for='apiKey'>New API Key</label><input type='password' id='apiKey' name='apiKey' placeholder='sk-...' required></div>";
-  html += "<button type='submit' class='btn'>Save API Key</button></form><hr>";
-  html += "<form action='/clearApiKey' method='POST' onsubmit=\"return confirm('Clear saved key and revert to compiled default?');\"><button type='submit' class='btn btn-secondary'>Clear Saved Key</button></form></div>";
-
-  html += "<div class='section'><h3>Volume</h3><form action='/saveVolume' method='POST'>";
-  html += "<div class='form-group'><label for='volume'>Playback Volume: <span id='volVal'>" + String(g_volume) + "</span>%</label>";
-  html += "<input type='range' id='volume' name='volume' min='0' max='100' value='" + String(g_volume) + "' oninput=\"document.getElementById('volVal').textContent=this.value\"></div>";
-  html += "<button type='submit' class='btn'>Save Volume</button></form></div>";
-
-  html += "<div class='section'><h3>Audio Output</h3><form action='/saveAudioOut' method='POST'>";
-  html += "<div class='form-group'><label for='audioOut'>Output device</label>";
-  html += "<select id='audioOut' name='audioOut'>";
-  html += String("<option value='0'") + (g_audio_output == AUDIO_OUT_SPEAKER    ? " selected" : "") + ">Speaker</option>";
-  html += String("<option value='1'") + (g_audio_output == AUDIO_OUT_HEADPHONES ? " selected" : "") + ">Headphones</option>";
-  html += "</select></div>";
-  html += "<p style='color:#666;font-size:0.9em;'>Headphones routes audio to the 3.5 mm jack, for an external speaker. Only use if you have an external speaker connected.</p>";
-  html += "<button type='submit' class='btn'>Save Audio Output</button></form></div>";
-
+  json += "],";
+  json += "\"persist\":"  + String(g_persist_conversation ? "true" : "false") + ",";
+  json += "\"verbose\":"  + String(g_verbose_logging ? "true" : "false") + ",";
+  json += "\"volume\":"   + String((int)g_volume) + ",";
+  json += "\"audioOut\":" + String((int)g_audio_output) + ",";
+  json += "\"apiKeySet\":" + String(g_api_key.length() > 0 ? "true" : "false") + ",";
+  json += "\"apMode\":"   + String(ap_mode ? "true" : "false") + ",";
+  json += "\"ssid\":\""   + json_escape(ap_mode ? WiFi.softAPSSID() : WiFi.SSID()) + "\",";
 #if USE_DISPLAY
-  html += "<div class='section'><h3>Emojis</h3>";
-  html += "<p>Customize the on-device emoji animations.</p>";
-  html += "<a href='/emojis'><button class='btn'>Open Emoji Settings</button></a></div>";
+  json += "\"useDisplay\":true,";
+#else
+  json += "\"useDisplay\":false,";
 #endif
-
-  html += "<div class='section'><h3>Token Usage (since boot)</h3>";
-  html += "<p style='color:#666;font-size:0.9em;'>Reload the page to refresh.</p>";
-  html += "<div class='form-group'><label>Total</label>" + String((uint32_t)g_tokens.total) + "</div>";
-  html += "<div class='form-group'><label>Input</label>";
-  html += String((uint32_t)g_tokens.input);
-  html += " (cached " + String((uint32_t)g_tokens.input_cached);
-  html += ", text "  + String((uint32_t)g_tokens.input_text);
-  html += ", audio " + String((uint32_t)g_tokens.input_audio) + ")</div>";
-  html += "<div class='form-group'><label>Output</label>";
-  html += String((uint32_t)g_tokens.output);
-  html += " (text "  + String((uint32_t)g_tokens.output_text);
-  html += ", audio " + String((uint32_t)g_tokens.output_audio) + ")</div>";
-  html += "</div>";
-
-  html += "</div></body></html>";
-  server.send(200, "text/html; charset=utf-8", html);
+  json += "\"tokens\":{";
+  json += "\"total\":"       + String((uint32_t)g_tokens.total);
+  json += ",\"input\":"      + String((uint32_t)g_tokens.input);
+  json += ",\"inputCached\":" + String((uint32_t)g_tokens.input_cached);
+  json += ",\"inputText\":"  + String((uint32_t)g_tokens.input_text);
+  json += ",\"inputAudio\":" + String((uint32_t)g_tokens.input_audio);
+  json += ",\"output\":"     + String((uint32_t)g_tokens.output);
+  json += ",\"outputText\":" + String((uint32_t)g_tokens.output_text);
+  json += ",\"outputAudio\":" + String((uint32_t)g_tokens.output_audio);
+  json += "}}";
+  server.sendHeader("Cache-Control", "no-cache");
+  server.send(200, "application/json", json);
 }
 
 void handle_save() {
@@ -180,6 +145,9 @@ void handle_delete() {
     server.send(200, "text/plain", "Deleted! Restarting...");
     delay(2000); ESP.restart();
 }
+// Personality card: system prompt + voice only. persist/verbose moved to the
+// admin Behavior card (handle_save_behavior) so saving the prompt can't clear
+// the checkbox-backed flags.
 void handle_save_agent() {
   String submitted_prompt = server.arg("sysPrompt");
   if (submitted_prompt.length() > 12288) {
@@ -188,12 +156,8 @@ void handle_save_agent() {
   }
   preferences.begin("agentConfig", false);
   g_sys_instruction = submitted_prompt;
-  g_persist_conversation = server.hasArg("persist");
-  g_verbose_logging = server.hasArg("verbose");
   preferences.putBytes("sysPrompt", g_sys_instruction.c_str(),
                        g_sys_instruction.length());
-  preferences.putBool("persist", g_persist_conversation);
-  preferences.putBool("verbose", g_verbose_logging);
   String submitted_voice = server.arg("voice");
   if (voice_is_allowed(submitted_voice)) {
     g_voice = submitted_voice;
@@ -202,6 +166,18 @@ void handle_save_agent() {
     CPRINTF("POST /saveAgent: voice '%s' not in whitelist, ignored\n",
             submitted_voice.c_str());
   }
+  preferences.end();
+  server.sendHeader("Location", "/", true);
+  server.send(302, "text/plain", "");
+}
+
+// Admin Behavior card: persist conversation + verbose logging.
+void handle_save_behavior() {
+  preferences.begin("agentConfig", false);
+  g_persist_conversation = server.hasArg("persist");
+  g_verbose_logging = server.hasArg("verbose");
+  preferences.putBool("persist", g_persist_conversation);
+  preferences.putBool("verbose", g_verbose_logging);
   preferences.end();
   server.sendHeader("Location", "/", true);
   server.send(302, "text/plain", "");
@@ -576,9 +552,11 @@ void setup_web_server() {
   display_boot_status("Opening the front door");
 #endif
   server.on("/", HTTP_GET, handle_root);
+  server.on("/api/config", HTTP_GET, handle_config);
   server.on("/save", HTTP_POST, handle_save);
   server.on("/delete", HTTP_POST, handle_delete);
   server.on("/saveAgent", HTTP_POST, handle_save_agent);
+  server.on("/saveBehavior", HTTP_POST, handle_save_behavior);
   server.on("/restoreAgent", HTTP_POST, handle_restore_agent);
   server.on("/saveApiKey", HTTP_POST, handle_save_api_key);
   server.on("/clearApiKey", HTTP_POST, handle_clear_api_key);

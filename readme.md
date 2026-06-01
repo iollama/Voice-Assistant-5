@@ -90,7 +90,7 @@ Populate this only if you want a headphone jack or want to feed a powered speake
 | GND | GND | |
 | L / R / GND | 3.5 mm stereo jack | Built into the breakout PCB |
 
-The portal *Audio Output* dropdown (under *Volume*) selects Speaker (MAX98357A) or Headphones (PCM5102A). The choice persists across reboots. Changes are rejected with HTTP 409 during an active conversation -- save while idle (green LED).
+The portal *Audio Output* selector (below *Volume*) picks Speaker (MAX98357A) or Headphones (PCM5102A). The choice persists across reboots. Changes are rejected with HTTP 409 during an active conversation -- save while idle (green LED).
 
 ### Display -- GC9A01
 
@@ -111,7 +111,7 @@ The portal *Audio Output* dropdown (under *Volume*) selects Speaker (MAX98357A) 
 |-----------|-----|-------------|------|
 | PTT Button | Signal | GPIO 1 | INPUT_PULLUP, active LOW |
 | PTT Button | GND | GND | |
-| NeoPixel RGB LED | Data | GPIO 48 | Built-in on most S3 boards, no jumper needed |
+| NeoPixel RGB LED | Data | GPIO 48 | Built-in on most S3 boards, no jumper needed. Also brought out on the expansion header (see below) for future repurposing. |
 | MAX98357A SD (optional) | Enable | GPIO 38 | Only needed if you populated the PCM5102A and want runtime switching. Otherwise tie SD to 3.3V. |
 | PCM5102A XSMT (optional) | Mute | GPIO 39 | Only populated when PCM5102A is installed. HIGH = play, LOW = mute. |
 
@@ -122,6 +122,22 @@ The portal *Audio Output* dropdown (under *Volume*) selects Speaker (MAX98357A) 
 | 3.3V | INMP441, GC9A01, MAX98357A SD pin (legacy wiring only), GC9A01 BLK, PCM5102A VIN (optional) |
 | 5V | MAX98357A VIN |
 | GND | All components (common ground) |
+
+### Expansion Header (PCB build only)
+
+The PCB build exposes every ESP32-S3 GPIO that isn't already driven by a peripheral, plus power rails, on two parallel rows of 2.54 mm through-hole pads in the lower band of the board. Solder a male or female header strip if you want one — the pads are unpopulated by default so you can pick whichever fits your add-on.
+
+| Row | Pads | Silkscreen labels (left → right) |
+|---|---|---|
+| Data (17) | GPIO pins | `0* 3* 8 9 10 11 12 13 14 15 16 18 19 20 45* 46* 48` |
+| Power (11) | 3.3 V / GND / 5 V | `3V 3V 3V G G G G G 5V 5V 5V` |
+
+Notes on the data row:
+- `*` marks ESP32-S3 boot-strapping pins (GPIO 0, 3, 45, 46) — they have constraints at boot. Use with care.
+- GPIO 19 / 20 are also the chip's native USB D−/D+. If a future build adds a PCB-mounted USB-C connector, these become unavailable.
+- GPIO 48 is the on-module RGB status LED. It's brought out for future repurposing, but anything you wire to it will fight the firmware's status indicator until you disable that path in code.
+
+Silkscreen labels are shortened (`3V` rather than `3V3`, `G` rather than `GND`) so each label fits within the 2.54 mm pad pitch.
 
 ## Build Toolchain
 
@@ -220,29 +236,12 @@ From the settings page you can configure:
 
 - **System Prompt** -- Control the assistant's persona and response style
 - **Voice** -- One of the 10 OpenAI Realtime voices (`marin`, `cedar`, `alloy`, `ash`, `ballad`, `coral`, `echo`, `sage`, `shimmer`, `verse`); selection takes effect on the next session
-- **Temperature** (0.0 - 2.0) -- Higher values produce more creative responses
-- **Persist Conversation** -- When enabled, the assistant remembers previous exchanges via `previous_response_id` chaining
-- **Verbose Logging** -- Enable detailed debug output on Serial Monitor
 - **Volume** (0 - 100%) -- Speaker playback volume
-- **API Key** -- Override the compiled `config.h` key (stored in NVS)
+- **Audio Output** -- Speaker or Headphones (only if the optional PCM5102A DAC is installed)
 
-All settings are saved to NVS and persist across reboots. Use **Restore Defaults** to reset.
+Less-common options live behind the **Admin Zone** toggle further down the page: Wi-Fi network, your **API Key** (override the compiled `config.h` key, stored in NVS), conversation behavior (Persist Conversation, Verbose Logging), and token usage.
 
-### Web Server Endpoints
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/` | Settings page |
-| POST | `/save` | Save WiFi credentials and restart |
-| POST | `/delete` | Forget WiFi credentials and restart into AP mode |
-| POST | `/saveAgent` | Save agent configuration |
-| POST | `/saveApiKey` | Save custom API key |
-| POST | `/clearApiKey` | Revert to compiled API key |
-| POST | `/saveVolume` | Save volume setting |
-| POST | `/restoreAgent` | Restore default agent settings |
-| GET | `/emojis` | Emoji customization page (needs internet — loads GIF decoder + zip libraries from a CDN) |
-| GET | `/api/emoji/manifest` | Per-emotion `{count, source}` JSON used by the customization page |
-| GET, POST | `/api/emoji/<emotion>[/<n>.bin\|/reset]`, `/api/emoji/reset-all` | Browser uploads / resets one or all emojis. Writes rejected with 409 during an active voice turn. |
+All settings are saved to NVS and persist across reboots. Use **Restore defaults** (in the Admin Zone) to reset the agent settings.
 
 ## Emoji Display Setup
 
@@ -254,7 +253,7 @@ All settings are saved to NVS and persist across reboots. Use **Restore Defaults
 
 ### Replacing Emojis from Your Browser
 
-Once the device is on WiFi, browse to `http://voice-agent-XXYY.local/emojis` (or hit **Open Emoji Settings** on the main settings page). Drop in a GIF, PNG, or JPG for any of the seven moods and the assistant will use it immediately -- no re-flash, no Python, no SD card. The shipped defaults are stored separately and are never overwritten, so there is no way to brick the device through customization; reset any mood (or all of them) at any time. See [voice_agent_5/docs/emoji-customization.md](voice_agent_5/docs/emoji-customization.md) for the full walkthrough, supported formats, and how to share an emoji pack.
+Once the device is on WiFi, browse to `http://voice-agent-XXYY.local/emojis` (or hit **Open editor** on the main settings page). Drop in a GIF, PNG, or JPG for any of the seven moods and the assistant will use it immediately -- no re-flash, no Python, no SD card. The shipped defaults are stored separately and are never overwritten, so there is no way to brick the device through customization; reset any mood (or all of them) at any time. See [voice_agent_5/docs/emoji-customization.md](voice_agent_5/docs/emoji-customization.md) for the full walkthrough, supported formats, and how to share an emoji pack.
 
 The customization page needs your browser to have internet access (it loads the GIF decoder and zip libraries from a CDN). The device itself stays local-only.
 
@@ -342,12 +341,11 @@ These are configurable at runtime via the web portal and persist across reboots:
 
 | Setting | Default | Range | Description |
 |---------|---------|-------|-------------|
-| System Prompt | "You are a helpful voice assistant..." | up to 2000 chars | Controls assistant persona |
+| System Prompt | "You are a helpful voice assistant..." | up to 12 KB (12288 chars) | Controls assistant persona |
 | Voice | `marin` | `alloy`, `ash`, `ballad`, `coral`, `echo`, `sage`, `shimmer`, `verse`, `marin`, `cedar` | OpenAI Realtime voice; applies on next session |
-| Temperature | 0.7 | 0.0 - 2.0 | Model creativity |
 | Persist Conversation | true | boolean | Chain responses via `previous_response_id` |
 | Verbose Logging | true | boolean | Detailed serial debug output |
-| Volume | 100 | 0 - 100 | Speaker volume (PCM sample scaling) |
+| Volume | 50 | 0 - 100 | Speaker volume (PCM sample scaling) |
 
 ## 3D Printed Enclosure
 
@@ -358,6 +356,8 @@ The `box/` directory contains files for a circular 145 mm enclosure designed to 
 - **`box/box3_pcb.stl`** -- Pre-generated STL for the **PCB** build. Tray is flat (only the speaker bosses remain); the four PCB standoffs hang from the lid so the PCB sits at the same height above the tray as in the breadboard build. Ring includes a 3.5 mm jack passthrough aligned with the optional PCM5102A DAC.
 
 Pick whichever STL matches the build you're doing -- you don't need to render anything yourself. If you do want to re-render: open `box3.scad` in OpenSCAD and toggle the two top-level selectors `BUILD_TYPE` (`HOUSING`, `PCB_EDGE_CUTS`, `PCB_MARKING`) and `TRAY_TYPE` (`3DPRINT`, `PCB`). The `RING`, `TRAY`, `LID`, and `ACCESORIES` flags at the top of the file control which parts render in a `HOUSING` build.
+
+The two `box/*.dxf` files (PCB outline and silkscreen reference) are likewise generated from `box3.scad`. They're tracked in git so a PCB designer doesn't need OpenSCAD installed, but the `.scad` is the source of truth — hand-edits to the DXFs are destroyed on the next export. Re-export all four artefacts with `box/housing_export.bat`.
 
 The design uses a tray/ring/lid construction: the tray holds all components (ESP32, display, speaker, mic, amplifier, button) facing down, the ring forms the enclosure wall with USB cutout, and the lid closes the back. Parts are secured with M3 screws into printed bosses.
 

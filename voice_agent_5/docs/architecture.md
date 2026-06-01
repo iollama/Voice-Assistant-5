@@ -1,4 +1,4 @@
-﻿# Voice Agent 5 — Architecture Document
+# Voice Agent 5 — Architecture Document
 
 ESP32-S3 push-to-talk voice assistant using the OpenAI Realtime API (speech-to-speech over secure WebSockets), with emotion tool calling for display state feedback.
 
@@ -34,10 +34,12 @@ The sketch is split across multiple `.ino` files in the sketch folder. The Ardui
 | `ring_buffer.h` | `PSRAMRingBuffer` class |
 | `display.ino` | `emoji_init_display()`, `emoji_show_emotion()`, `updateDisplay()`, `display_boot_status()`, `display_info_screen()`, `display_captive_portal_screen()` |
 | `hardware.ino` | I2S setup, `writeSilence()`, `updateButtonState()`, `captureMicrophone()`, `manageSpeaker()` |
-| `protocol.ino` | `handleAudioDelta()`, `handleEmotionToolCall()`, `handleResponseDone()`, `manage_websockets()`, `protocol_task()`, `sendAudioChunk()`, `jsonEscape()`, `get_api_key()` |
-| `webserver.ino` | `load_agent_config()`, `setup_web_server()`, all `handle_*` HTTP handlers (including the emoji web API) |
+| `protocol.ino` | `handleAudioDelta()`, `handleResponseDone()`, `buildSessionUpdate()`, `manage_websockets()`, `protocol_task()`, `sendAudioChunk()`, `jsonEscape()`, `get_api_key()`. Tool-call events are routed to `dispatchToolCall()` (in `tools.ino`) from the `onMessage` lambda. |
+| `tools.ino` | Tool registry `TOOLS[]` with `buildToolsJson()`, `dispatchToolCall()`, `beginToolCall()`, and the handlers `handleEmotionToolCall()` / `handleVolumeToolCall()` / `handleNetworkInfoToolCall()` |
+| `webserver.ino` | `load_agent_config()`, `setup_web_server()`, all `handle_*` HTTP handlers (including `handle_config()` for `GET /api/config` and the emoji web API) |
 | `wifi.ino` | `connectToWiFi()`, `setupMDNS()`, `syncTime()`, `init_wifi_and_time()`, `start_soft_ap()` |
-| `emojis_page.h` | Static HTML+JS for `GET /emojis` — included from `webserver.ino`. Lives in its own header because the Arduino auto-prototyper mis-parses `async function` inside a raw string as a C++ prototype. |
+| `root_page.h` | Static HTML/CSS/JS for the main settings page (`GET /`), served via `send_P`. Live values are fetched client-side from `GET /api/config`. Included from `webserver.ino`. |
+| `emojis_page.h` | Static HTML+JS for `GET /emojis` — included from `webserver.ino`. Both `*_page.h` files live in their own headers because the Arduino auto-prototyper mis-parses `async function` inside a raw string as a C++ prototype. |
 
 The `src/` folder contains the vendored ArduinoWebsockets library and is not part of the sketch code.
 
@@ -59,7 +61,7 @@ The two cores communicate exclusively through shared primitives:
 
 Volume tool call state crosses cores:
 - `g_volume` — written by Core 0 with the new level; read by Core 1's `manageSpeaker()` for PCM scaling
-- `g_volume_dirty` — set by Core 0, cleared by Core 1 after NVS write
+- `g_volume_persist_pending` — set by Core 0, cleared by Core 1 after NVS write
 
 Network info screen crosses cores:
 - `g_show_info_screen` — set by Core 0 (`handleNetworkInfoToolCall`); read and cleared by Core 1 on PTT press. While true, `loop()` shows the info screen and suppresses normal emoji display.
@@ -178,7 +180,7 @@ When the PCB is built with both chips populated, they share BCLK / LRCLK / DOUT 
 - `AUDIO_MAX_SD_PIN = GPIO 38` → MAX98357A `SD` (HIGH = enabled, stereo-average mode)
 - `AUDIO_PCM_XSMT_PIN = GPIO 39` → PCM5102A `XSMT` (HIGH = un-muted)
 
-`setup_audio_output_pins()` drives both LOW *before* `setup_i2s_speaker()` so the unselected chip never audibly starts. `apply_audio_output()` then flushes silence and drives the selected chip's pin HIGH. The selection lives in `volatile uint8_t g_audio_output` (`AUDIO_OUT_SPEAKER` / `AUDIO_OUT_HEADPHONES`) and is persisted in NVS as key `audioOut` (uint8) in namespace `agentConfig`. It is editable from the captive portal *Audio Output* dropdown via `POST /saveAudioOut`; the handler rejects changes mid-conversation (HTTP 409) using the same idle-gate pattern as the emoji upload endpoints.
+`setup_audio_output_pins()` drives both LOW *before* `setup_i2s_speaker()` so the unselected chip never audibly starts. `apply_audio_output()` then flushes silence and drives the selected chip's pin HIGH. The selection lives in `volatile uint8_t g_audio_output` (`AUDIO_OUT_SPEAKER` / `AUDIO_OUT_HEADPHONES`) and is persisted in NVS as key `audioOut` (uint8) in namespace `agentConfig`. It is editable from the captive portal *Audio Output* selector via `POST /saveAudioOut`; the handler rejects changes mid-conversation (HTTP 409) using the same idle-gate pattern as the emoji upload endpoints.
 
 ---
 
@@ -421,10 +423,12 @@ Configuration is stored in ESP32 NVS (Non-Volatile Storage) using the `Preferenc
 | Persist conversation | `persist` | true |
 | Verbose logging | `verbose` | true |
 | API key | `apiKey` | falls back to `config.h` |
-| Volume | `volume` | 100 |
+| Volume | `volume` | 50 |
 | Voice | `voice` | `marin` (whitelisted to the 10 SDK voices: `alloy`, `ash`, `ballad`, `coral`, `echo`, `sage`, `shimmer`, `verse`, `marin`, `cedar`) |
 | WiFi SSID | `wifi-creds/ssid` | — |
 | WiFi password | `wifi-creds/pass` | — |
+
+The main settings page is **static HTML** (`root_page.h`), served via `send_P`; it fetches current values at load time from `GET /api/config` (which reports whether a custom API key is set, never the key itself) and saves each card with a normal form POST. The *Persist Conversation* and *Verbose Logging* flags were split out of `/saveAgent` into `POST /saveBehavior` so saving the system prompt cannot clear them.
 
 ### WiFi Setup (Captive Portal)
 

@@ -15,9 +15,9 @@ TRAY        = 1;
 LID         = 1;
 ACCESORIES  = 1;
 TRAY_TYPE  = "3DPRINT"; // [3DPRINT, PCB]
-BUILD_TYPE = "HOUSING"; // [HOUSING, PCB_EDGE_CUTS, PCB_MARKING]
+BUILD_TYPE = "HOUSING"; // [HOUSING, PCB_EDGE_CUTS, PCB_MARKING, PCB_SILKSCREEN]
 
-pcb_mode    = (BUILD_TYPE == "PCB_EDGE_CUTS" || BUILD_TYPE == "PCB_MARKING");
+pcb_mode    = (BUILD_TYPE == "PCB_EDGE_CUTS" || BUILD_TYPE == "PCB_MARKING" || BUILD_TYPE == "PCB_SILKSCREEN");
 _RING       = pcb_mode ? 0 : RING;
 _TRAY       = pcb_mode ? 0 : TRAY;
 _LID        = pcb_mode ? 0 : LID;
@@ -80,7 +80,7 @@ pcm5102a_x      = 51.5;
 pcm5102a_y      = -22.0;
 pcm5102a_long   = 32.0;
 pcm5102a_short  = 17.33;
-pcm5102a_rot    = -114;     // rotation around (pcm5102a_x, pcm5102a_y), degrees CCW
+pcm5102a_rot    = -23;     // rotation around (pcm5102a_x, pcm5102a_y), degrees CCW
 
 // --- HEADPHONES HOLE (PCM5102A jack passthrough on ring) ---
 headphones_hole_d    = 6.5;  // hole diameter (typical 3.5mm panel-mount jack)
@@ -114,7 +114,56 @@ raiser_t = 2.0; //raiser width
 
 tft_hole_x = 30.0; tft_hole_y = 30.0; tft_view_d = 32.4;
 amp_hole_x = 12.6; amp_hole_y_off = 7.15;
-spk_d = 56.5; 
+spk_d = 56.5;
+
+// --- EXPANSION HEADER ---
+// Three parallel through-hole rows in the lower band of the PCB
+// (below the speaker bracket arm at 240°, above the mic):
+//   * Data row  (20 pads, 2.54mm): every ESP32-S3 GPIO not driven by a peripheral.
+//                          "*" suffix marks boot-strapping pins (0, 3, 45, 46).
+//                          GPIO 48 is included even though the firmware drives
+//                          the status LED on it — repurposing means releasing
+//                          it in firmware first.
+//                          35/36/37 are the trailing spare GPIOs.
+//   * Power row (11 pads, 2.54mm): 3V3 (×3), GND (×5), 5V (×3) — grouped left-to-right.
+//   * Aux row    (2 pads, 5.08mm): module config jumpers — PCM5102A SCK (J7.1) and
+//                          MAX98357A GAIN (J5.4). Wider pitch so the two labels fit
+//                          on silkscreen. Left pad → SCK, right pad → GAIN.
+expansion_hdr_x          = 0.0;
+expansion_data_y         = -42.0;
+expansion_power_y        = -47.0;
+expansion_aux_y          = -52.0;
+expansion_hdr_pitch      = 2.54;
+expansion_aux_pitch      = 5.08;
+expansion_hdr_text_dy    = -1.5;    // label top offset below each pad row
+expansion_hdr_text_size  = 1.4;
+
+// --- PCB branding (appears on both pcb_marking.dxf and pcb_silkscreen.dxf) ---
+// Placed near the speaker hole, top-right, oriented along the tangent (~45deg).
+// Tweak freely — version/date are the values from when this PCB was authored.
+brand_url       = "www.iollama.com";
+brand_name      = "Voice Agent 5";
+brand_version   = "v0.8";
+brand_date      = "2026-05-31";   // PCB authoring date
+brand_angle     = 45;             // direction from speaker center (deg; top-right)
+brand_offset_r  = 34.0;           // radial distance of the text block from speaker center
+brand_line_h    = 2.4;            // line spacing (mm)
+brand_text_size = 1.8;            // glyph size (mm)
+
+expansion_data_labels = [
+    "0*", "3*",
+    "8", "9", "10", "11", "12", "13", "14", "15", "16", "18", "19", "20",
+    "45*", "46*", "48",
+    "35", "36", "37"
+];
+expansion_power_labels = [
+    "3V", "3V", "3V",
+    "G", "G", "G", "G", "G",
+    "5V", "5V", "5V"
+];
+expansion_aux_labels = [
+    "SCK", "GAIN"
+];
 
 /* --- DYNAMIC TOTALS --- */
 inner_d = enclosure_d - (wall * 2);
@@ -134,8 +183,10 @@ pcb_top_z = lid_t + esp_boss_height + pcb_height;
 // Headphone hole: angle = direction from origin to the PCM5102A corner closest
 // to the ring; z = a fixed offset above the PCB top so the hole tracks the
 // PCB regardless of standoff side or ring height.
-headphones_corner_x = pcm5102a_x + (pcm5102a_long/2) * cos(pcm5102a_rot) - (pcm5102a_short/2) * sin(pcm5102a_rot);
-headphones_corner_y = pcm5102a_y + (pcm5102a_long/2) * sin(pcm5102a_rot) + (pcm5102a_short/2) * cos(pcm5102a_rot);
+// Local frame: long axis along Y (jack on +Y short edge), short axis along X
+// (right side at +X). Top-right corner = (+short/2, +long/2).
+headphones_corner_x = pcm5102a_x + (pcm5102a_short/2) * cos(pcm5102a_rot) - (pcm5102a_long/2) * sin(pcm5102a_rot);
+headphones_corner_y = pcm5102a_y + (pcm5102a_short/2) * sin(pcm5102a_rot) + (pcm5102a_long/2) * cos(pcm5102a_rot);
 headphones_angle    = atan2(headphones_corner_y, headphones_corner_x);
 headphones_hole_z   = pcb_top_z + headphones_above_pcb;
 
@@ -160,7 +211,7 @@ if (1==_ACCESORIES) {
 }
 
 if (1==_PCB) translate([0, -(enclosure_d + 15), 0]) {
-    if (BUILD_TYPE != "PCB_MARKING") projection() render_pcb();
+    if (BUILD_TYPE != "PCB_MARKING" && BUILD_TYPE != "PCB_SILKSCREEN") projection() render_pcb();
     pcb_reference_overlay();
 }
 
@@ -373,34 +424,21 @@ module pcb_disk() {
     cylinder(d=inner_d - pcb_offset * 2, h=pcb_height, $fn=120);
 }
 
-// 2.2mm standoff clearance hole at every boss in the design.
+// 2.2mm standoff clearance hole at every boss that physically touches the
+// PCB tray variant. The TFT, Amp, Mic, and Button-bracket bosses only exist
+// on the 3DPRINT tray (they hold those modules to the tray floor); on the
+// PCB tray those modules ride on their headers, so drilling clearance holes
+// there would just remove copper. Those four boss groups still appear as
+// marks in pcb_marking.dxf so the assembler can see the 3DPRINT-tray
+// positions; they are intentionally NOT cut here.
 module _boss_holes() {
     d = 2.2; h = pcb_height + 2;
-    // TFT
-    translate([0, tft_y, -1])
-        for(ix=[-tft_hole_x/2, tft_hole_x/2], iy=[-tft_hole_y/2, tft_hole_y/2])
-            translate([ix, iy, 0]) cylinder(d=d, h=h, $fn=24);
-    // Speaker
+    // Speaker (3 bosses at r=32, 120° apart) — sit under the Y-bracket
+    // clearance cutout anyway, kept here for symmetry of intent.
     translate([spk_x, spk_y, -1])
         for(a = [0, 120, 240]) rotate([0, 0, a]) translate([32.0, 0, 0])
             cylinder(d=d, h=h, $fn=24);
-    // Amp
-    translate([amp_pos, amp_pos, -1]) {
-        translate([-amp_hole_x/2, amp_hole_y_off, 0]) cylinder(d=d, h=h, $fn=24);
-        translate([ amp_hole_x/2, amp_hole_y_off, 0]) cylinder(d=d, h=h, $fn=24);
-    }
-    // Inline button
-    translate([inline_btn_tray_x, inline_btn_tray_y, -1]) {
-        _inner = inline_btn_body + inline_btn_clr * 2;
-        _screw_off = (_inner + wall*2)/2 + inline_btn_ear_ext - inline_btn_ear_w/2;
-        for(s = [1, -1]) translate([s * _screw_off, 0, 0])
-            cylinder(d=d, h=h, $fn=24);
-    }
-    // Mic
-    translate([0, mic_y, -1])
-        for(ix=[-mic_boss_x, mic_boss_x]) translate([ix, 0, 0])
-            cylinder(d=d, h=h, $fn=24);
-    // PCB mount
+    // PCB mount (4 bosses at r=pcb_boss_r) — how the PCB hangs from the lid.
     for(a = lid_angles) rotate([0, 0, a + pcb_boss_rot]) translate([pcb_boss_r, 0, -1])
         cylinder(d=d, h=h, $fn=24);
 }
@@ -429,7 +467,8 @@ module render_pcb() {
     }
 }
 
-module _marking_shapes() {
+module _marking_shapes(include_refs=true) {
+    _marking_branding();
     // TFT viewport circle
     projection() translate([0, tft_y, 0])
         difference() {
@@ -437,7 +476,7 @@ module _marking_shapes() {
             cylinder(d=tft_view_d - pcb_line_w, h=2, $fn=80);
         }
     // TFT bosses
-    projection() for(ix=[-tft_hole_x/2, tft_hole_x/2], iy=[-tft_hole_y/2, tft_hole_y/2])
+    if (include_refs) projection() for(ix=[-tft_hole_x/2, tft_hole_x/2], iy=[-tft_hole_y/2, tft_hole_y/2])
         translate([ix, tft_y + iy, 0])
             difference() {
                 cylinder(d=5 + pcb_line_w, h=1, $fn=32);
@@ -448,7 +487,7 @@ module _marking_shapes() {
         for(i = [0:7]) translate([(i - 3.5) * 2.54, 0, 0])
             cylinder(d=1, h=1, $fn=20);
     // Mic bosses
-    projection() for(ix=[-mic_boss_x, mic_boss_x])
+    if (include_refs) projection() for(ix=[-mic_boss_x, mic_boss_x])
         translate([ix, mic_y, 0])
             difference() {
                 cylinder(d=5 + pcb_line_w, h=1, $fn=32);
@@ -465,7 +504,7 @@ module _marking_shapes() {
         for(ix=[-4, 4], iy=[-2.54, 0, 2.54]) translate([ix, iy, 0])
             cylinder(d=1, h=1, $fn=20);
     // Amp bosses
-    projection() translate([amp_pos, amp_pos, 0])
+    if (include_refs) projection() translate([amp_pos, amp_pos, 0])
         for(sx=[-1, 1]) translate([sx * amp_hole_x/2, amp_hole_y_off, 0])
             difference() {
                 cylinder(d=5 + pcb_line_w, h=1, $fn=32);
@@ -484,7 +523,7 @@ module _marking_shapes() {
         for(i = [-3:3]) translate([i * 2.54, 0, 0])
             cylinder(d=1, h=1, $fn=20);
     // Button groove inner outline
-    projection() {
+    if (include_refs) projection() {
         translate([btn_groove_x - btn_access_w/2 - pcb_line_w, btn_groove_y - btn_access_ext, 0])
             cube([pcb_line_w, btn_access_l, 1]);
         translate([btn_groove_x + btn_access_w/2, btn_groove_y - btn_access_ext, 0])
@@ -500,7 +539,7 @@ module _marking_shapes() {
             }
     }
     // Button bracket bosses
-    projection() translate([inline_btn_tray_x, inline_btn_tray_y, 0]) {
+    if (include_refs) projection() translate([inline_btn_tray_x, inline_btn_tray_y, 0]) {
         _inner = inline_btn_body + inline_btn_clr * 2;
         _screw_off = (_inner + wall*2)/2 + inline_btn_ear_ext - inline_btn_ear_w/2;
         for(s=[1,-1]) translate([s * _screw_off, 0, 0])
@@ -510,12 +549,18 @@ module _marking_shapes() {
             }
     }
     // Button center dot
-    projection() translate([inline_btn_tray_x, inline_btn_tray_y, 0])
+    if (include_refs) projection() translate([inline_btn_tray_x, inline_btn_tray_y, 0])
         cylinder(d=2, h=1, $fn=24);
     // Button pins (4 pins in a square, 5.08mm apart)
     projection() translate([inline_btn_tray_x, inline_btn_tray_y, 0])
         for(ix=[-2.54, 2.54], iy=[-2.54, 2.54]) translate([ix, iy, 0])
             cylinder(d=1, h=1, $fn=20);
+    // PTT paired-contact links: each row of two contacts is internally shorted,
+    // so draw a bar joining them (top pair = PTT_BTN, bottom pair = GND).
+    projection() translate([inline_btn_tray_x, inline_btn_tray_y, 0])
+        for(sy = [-2.54, 2.54])
+            translate([-2.54, sy - pcb_line_w/2, 0])
+                cube([5.08, pcb_line_w, 1]);
     // Button body outline (12mm square)
     projection() translate([inline_btn_tray_x, inline_btn_tray_y, 0])
         difference() {
@@ -524,23 +569,25 @@ module _marking_shapes() {
             translate([-(inline_btn_body - pcb_line_w)/2, -(inline_btn_body - pcb_line_w)/2, -1])
                 cube([inline_btn_body - pcb_line_w, inline_btn_body - pcb_line_w, 3]);
         }
-    // PCM5102A board outline (long axis along X, jack on outer short edge near ring)
+    // PCM5102A board outline. Local frame: long axis along Y (jack on +Y short
+    // edge facing the ring), short axis along X. 9-pin row on LEFT long edge
+    // (x = -short/2), 6-pin row on BOTTOM short edge (y = -long/2).
     projection() translate([pcm5102a_x, pcm5102a_y, 0]) rotate([0, 0, pcm5102a_rot])
         difference() {
-            translate([-pcm5102a_long/2 - pcb_line_w, -pcm5102a_short/2 - pcb_line_w, 0])
-                cube([pcm5102a_long + pcb_line_w*2, pcm5102a_short + pcb_line_w*2, 1]);
-            translate([-pcm5102a_long/2, -pcm5102a_short/2, -1])
-                cube([pcm5102a_long, pcm5102a_short, 3]);
+            translate([-pcm5102a_short/2 - pcb_line_w, -pcm5102a_long/2 - pcb_line_w, 0])
+                cube([pcm5102a_short + pcb_line_w*2, pcm5102a_long + pcb_line_w*2, 1]);
+            translate([-pcm5102a_short/2, -pcm5102a_long/2, -1])
+                cube([pcm5102a_short, pcm5102a_long, 3]);
         }
-    // PCM5102A 9-pin header (bottom long side, 2.54mm pitch)
+    // PCM5102A 9-pin header (LEFT long edge, 2.54mm pitch, pads along Y)
     projection() translate([pcm5102a_x, pcm5102a_y, 0]) rotate([0, 0, pcm5102a_rot])
-        translate([0, -(pcm5102a_short/2 - 1.27), 0])
-            for(i = [0:8]) translate([(i - 4) * 2.54, 0, 0])
+        translate([-(pcm5102a_short/2 - 1.27), 0, 0])
+            for(i = [0:8]) translate([0, (i - 4) * 2.54, 0])
                 cylinder(d=1, h=1, $fn=20);
-    // PCM5102A 6-pin header (inner short side, 2.54mm pitch)
+    // PCM5102A 6-pin header (BOTTOM short edge, 2.54mm pitch, pads along X)
     projection() translate([pcm5102a_x, pcm5102a_y, 0]) rotate([0, 0, pcm5102a_rot])
-        translate([-pcm5102a_long/2 + 1.27, 0, 0])
-            for(i = [0:5]) translate([0, (i - 2.5) * 2.54, 0])
+        translate([0, -(pcm5102a_long/2 - 1.27), 0])
+            for(i = [0:5]) translate([(i - 2.5) * 2.54, 0, 0])
                 cylinder(d=1, h=1, $fn=20);
     // ESP32 board outline
     projection() translate([esp_x, esp_y, 0])
@@ -555,12 +602,149 @@ module _marking_shapes() {
         for(ix=[-esp_w/2 + 1.27, esp_w/2 - 1.27], i=[0:21])
             translate([ix, (i - 10.5) * 2.54, 0])
                 cylinder(d=1, h=1, $fn=20);
+    // Expansion header — DATA row (17 GPIO pads at 2.54mm pitch)
+    projection() translate([expansion_hdr_x, expansion_data_y, 0])
+        for(i = [0 : len(expansion_data_labels) - 1])
+            translate([(i - (len(expansion_data_labels) - 1)/2) * expansion_hdr_pitch, 0, 0])
+                cylinder(d=1, h=1, $fn=20);
+    translate([expansion_hdr_x, expansion_data_y + expansion_hdr_text_dy, 0])
+        for(i = [0 : len(expansion_data_labels) - 1])
+            translate([(i - (len(expansion_data_labels) - 1)/2) * expansion_hdr_pitch, 0, 0])
+                text(expansion_data_labels[i], size=expansion_hdr_text_size,
+                     halign="center", valign="top");
+    // Expansion header — POWER row (11 pads at 2.54mm pitch)
+    projection() translate([expansion_hdr_x, expansion_power_y, 0])
+        for(i = [0 : len(expansion_power_labels) - 1])
+            translate([(i - (len(expansion_power_labels) - 1)/2) * expansion_hdr_pitch, 0, 0])
+                cylinder(d=1, h=1, $fn=20);
+    translate([expansion_hdr_x, expansion_power_y + expansion_hdr_text_dy, 0])
+        for(i = [0 : len(expansion_power_labels) - 1])
+            translate([(i - (len(expansion_power_labels) - 1)/2) * expansion_hdr_pitch, 0, 0])
+                text(expansion_power_labels[i], size=expansion_hdr_text_size,
+                     halign="center", valign="top");
+    // Expansion header — AUX row (2 pads at 5.08mm pitch — PCM5102A SCK + MAX98357A GAIN)
+    projection() translate([expansion_hdr_x, expansion_aux_y, 0])
+        for(i = [0 : len(expansion_aux_labels) - 1])
+            translate([(i - (len(expansion_aux_labels) - 1)/2) * expansion_aux_pitch, 0, 0])
+                cylinder(d=1, h=1, $fn=20);
+    // AUX labels flank outward with the module owner prefixed, so this SCK reads as
+    // the PCM5102A's (distinct from the mic's I2S SCK) and GAIN as the MAX98357A's.
+    translate([expansion_hdr_x, expansion_aux_y + expansion_hdr_text_dy, 0]) {
+        translate([-expansion_aux_pitch/2 - 0.5, 0, 0])
+            text(str("PCM ", expansion_aux_labels[0]), size=1.0, halign="right", valign="top");
+        translate([expansion_aux_pitch/2 + 0.5, 0, 0])
+            text(str("MAX ", expansion_aux_labels[1]), size=1.0, halign="left", valign="top");
+    }
+    // ============================================================
+    // Module silkscreen marks (assembly aid: name + module pin labels)
+    // ============================================================
+
+    // --- ESP32-S3 host (J1 + J2) ---
+    // Name centered inside the board outline (hidden by the dev board once seated).
+    translate([esp_x, esp_y, 0])
+        text("ESP32-S3", size=expansion_hdr_text_size, halign="center", valign="center");
+    // J1 left row pad labels (outside the LEFT edge of the ESP board).
+    // i=0 is the USB-end pad (KiCad pad 22 = GND); i=21 is the antenna-end pad (KiCad pad 1 = 3V3).
+    for(i = [0:21])
+        translate([esp_x - esp_w/2 - 1.5, esp_y + (i - 10.5) * 2.54, 0])
+            text(["G","5V","14","13","12","11","10","9","46","3","8","18","17","16","15","7","6","5","4","EN","3V","3V"][i],
+                 size=expansion_hdr_text_size, halign="right", valign="center");
+    // J2 right row pad labels (outside the RIGHT edge of the ESP board).
+    for(i = [0:21])
+        translate([esp_x + esp_w/2 + 1.5, esp_y + (i - 10.5) * 2.54, 0])
+            text(["G","G","19","20","21","47","48","45","0","35","36","37","38","39","40","41","42","2","1","RX","TX","G"][i],
+                 size=expansion_hdr_text_size, halign="left", valign="center");
+
+    // --- INMP441 mic (J3 + J4) ---
+    // Name centered inside the mic outline; pad labels just outside each column.
+    translate([0, mic_y, 0])
+        rotate([0, 0, 90])
+            text("INMP441", size=1.0, halign="center", valign="center");
+    for(i = [0:2]) {
+        translate([-8, mic_y + (i-1)*2.54, 0])
+            text(["SCK","WS","L/R"][i], size=expansion_hdr_text_size, halign="right", valign="center");
+        translate([+8, mic_y + (i-1)*2.54, 0])
+            text(["SD","VDD","GND"][i], size=expansion_hdr_text_size, halign="left", valign="center");
+    }
+
+    // --- MAX98357A amp (J5) ---
+    // Name CENTERED INSIDE the amp board outline (gets hidden when the amp
+    // module is plugged in — visible during assembly). Pad labels rotated 90°
+    // OUTSIDE the +Y edge so they remain visible after the module is seated.
+    // Note: the GND/VIN labels at the +X end may slightly overflow the PCB
+    // outline (amp board sits close to the PCB edge); marking DXF will clip
+    // anything past the outline. Trade-off accepted for outside-the-frame style.
+    translate([amp_pos, amp_pos + amp_hole_y_off + 19.1/2 - 2.4, 0])
+        text("MAX98357A", size=expansion_hdr_text_size, halign="center", valign="center");
+    for(i = [-3:3])
+        translate([amp_pos + i*2.54, amp_pos + amp_hole_y_off + 16.7 + 0.5, 0])
+            rotate([0, 0, 90])
+                text(["LRC","BCLK","DIN","GAIN","SD","GND","VIN"][i+3],
+                     size=expansion_hdr_text_size, halign="left", valign="center");
+
+    // --- PCM5102A DAC (J6 + J7) ---
+    // Labels rotate with the board (matched to pcm5102a_rot).
+    // Name CENTERED INSIDE the board outline (hidden by the module after assembly).
+    // 9-pin labels OUTSIDE the LEFT long edge (horizontal text, no overlap at
+    // 2.54mm vertical pitch). 6-pin labels OUTSIDE the BOTTOM short edge,
+    // rotated 90° so multi-char labels don't collide at 2.54mm pitch.
+    translate([pcm5102a_x, pcm5102a_y, 0]) rotate([0, 0, pcm5102a_rot]) {
+        // Module name centered on the board outline.
+        text("PCM5102A", size=expansion_hdr_text_size, halign="center", valign="center");
+        // 9-pin row: i=0 is BOTTOM of the column (LROUT), i=8 is TOP (FLT).
+        // Labels just outside the LEFT long edge of the board.
+        for(i = [0:8])
+            translate([-(pcm5102a_short/2 + 0.5), (i - 4) * 2.54, 0])
+                text(["LROUT","AGND","ROUT","AGND","A3V3","FMT","XSMT","DEMP","FLT"][i],
+                     size=expansion_hdr_text_size, halign="right", valign="center");
+        // 6-pin row: i=0 is LEFT (SCK), i=5 is RIGHT (VIN). Labels just outside
+        // the BOTTOM short edge, rotated 90° (read bottom-to-top).
+        for(i = [0:5])
+            translate([(i - 2.5) * 2.54, -(pcm5102a_long/2 + 0.5), 0])
+                rotate([0, 0, 90])
+                    text(["SCK","BCK","DIN","LCK","GND","VIN"][i],
+                         size=expansion_hdr_text_size, halign="right", valign="center");
+    }
+
+    // --- GC9A01 TFT (J8) ---
+    // Name CENTERED on the TFT viewport circle (hidden by the TFT when seated).
+    // Pad labels OUTSIDE the header, rotated 90° extending UP toward the PCB
+    // edge. Edge labels (BLK at -X, GND at +X) may slightly clip the PCB outline.
+    translate([0, tft_y, 0])
+        text("GC9A01", size=expansion_hdr_text_size, halign="center", valign="center");
+    for(i = [0:7])
+        translate([(i - 3.5) * 2.54, tft_y + 21 + 0.5, 0])
+            rotate([0, 0, 90])
+                text(["BLK","CS","DC","RES","SDA","SCL","VCC","GND"][i],
+                     size=expansion_hdr_text_size, halign="left", valign="center");
+
+    // --- PTT button (SW1) ---
+    // Label below the button body so it's visible after the switch is soldered.
+    translate([inline_btn_tray_x, inline_btn_tray_y - inline_btn_body/2 - 1.5, 0])
+        text("PTT", size=expansion_hdr_text_size, halign="center", valign="top");
+
+    // ============================================================
     // PCB mount bosses
-    projection() for(a = lid_angles) rotate([0, 0, a + pcb_boss_rot]) translate([pcb_boss_r, 0, 0])
+    // ============================================================
+    if (include_refs) projection() for(a = lid_angles) rotate([0, 0, a + pcb_boss_rot]) translate([pcb_boss_r, 0, 0])
         difference() {
             cylinder(d=5 + pcb_line_w, h=1, $fn=32);
             cylinder(d=5 - pcb_line_w, h=2, $fn=32);
         }
+}
+
+// PCB branding: logo text + URL + version/date near the speaker, top-right,
+// oriented along the tangent of the speaker circle (~brand_angle). Stacked
+// outward-to-inward: brand_url, brand_name, then "version  date".
+module _marking_branding() {
+    _lines = [brand_url, brand_name, str(brand_version, "  ", brand_date)];
+    translate([spk_x, spk_y, 0])
+        rotate([0, 0, brand_angle - 90])         // orient text along the tangent
+            translate([0, brand_offset_r, 0])    // push out along the brand_angle radial
+                for (i = [0 : len(_lines) - 1])
+                    translate([0, ((len(_lines) - 1) / 2 - i) * brand_line_h, 0])
+                        text(_lines[i], size=brand_text_size,
+                             halign="center", valign="center");
 }
 
 module pcb_reference_overlay() {
@@ -573,7 +757,18 @@ module pcb_reference_overlay() {
             projection() render_pcb();
             _marking_shapes();
         }
-    } else {
+    } else if (BUILD_TYPE == "PCB_SILKSCREEN") {
+        // Same as the marking but WITHOUT the 3DPRINT-tray boss reference marks —
+        // intended for import onto F.Silkscreen. Branding + labels + outlines stay.
+        difference() {
+            projection() render_pcb();
+            _marking_shapes(include_refs=false);
+        }
+    } else if (BUILD_TYPE != "PCB_EDGE_CUTS") {
+        // OpenSCAD GUI preview only: draw the marking shapes in blue as a
+        // visual reference overlaid on the housing render. NEVER rendered for
+        // PCB_EDGE_CUTS export — those marks must not bleed into the Edge.Cuts
+        // DXF or KiCad will cut along silkscreen text/outlines on fab.
         color("blue") _marking_shapes();
     }
 }

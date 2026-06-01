@@ -10,33 +10,42 @@ static const char EMOJIS_PAGE_HTML[] PROGMEM = R"PAGE(<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><title>Voice Agent - Emojis</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
-body{font-family:Arial,sans-serif;background:#f4f4f4;margin:0;padding:20px;color:#222}
-.container{background:#fff;max-width:760px;margin:auto;padding:20px;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,.1)}
-h2,h3{color:#333}
-.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:14px 0}
+*{box-sizing:border-box}
+body{font-family:"Comic Sans MS","Arial Black",system-ui,sans-serif;color:#111;margin:0;padding:18px;
+     background:#fff200;background-image:radial-gradient(#0000001a 18%,transparent 19%);background-size:15px 15px}
+.container{max-width:760px;margin:0 auto}
+h2{position:relative;background:#ff2d2d;color:#fff;border:4px solid #111;border-radius:16px 16px 16px 3px;
+   padding:14px 18px;font-weight:900;font-size:24px;text-shadow:2px 2px 0 #111;box-shadow:7px 7px 0 #111;margin:0 0 12px}
+h3{color:#1742d1}
+a{color:#1742d1}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:14px 0}
 .grid .row2{grid-column:span 1}
-.row2-wrap{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px;max-width:570px}
-.cell{border:1px solid #ddd;border-radius:8px;padding:8px;text-align:center;background:#fafafa}
-.cell canvas{width:90px;height:90px;background:#000;border-radius:50%;display:block;margin:0 auto 4px;image-rendering:pixelated}
-.cell .name{font-weight:bold;text-transform:capitalize;margin:4px 0}
-.cell .src{font-size:11px;color:#888;margin-bottom:6px}
-.cell button{display:block;width:100%;margin:3px 0;padding:6px;font-size:13px;border:none;border-radius:4px;cursor:pointer}
-.btn-primary{background:#007bff;color:#fff}
-.btn-primary:hover{background:#0056b3}
-.btn-secondary{background:#6c757d;color:#fff}
-.btn-secondary:hover{background:#5a6268}
-.btn-danger{background:#dc3545;color:#fff}
-.btn-danger:hover{background:#c82333}
-.actions{display:flex;gap:10px;flex-wrap:wrap;margin:20px 0}
-.actions button{flex:1;min-width:140px;padding:10px;font-size:14px;border:none;border-radius:4px;cursor:pointer}
-#status{padding:10px;border-radius:4px;margin:10px 0;display:none}
-.status-ok{background:#d4edda;color:#155724}
-.status-err{background:#f8d7da;color:#721c24}
-.status-info{background:#d1ecf1;color:#0c5460}
-.help{font-size:13px;color:#555;margin-top:8px}
-.help a{color:#007bff}
+.row2-wrap{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:14px;max-width:580px}
+.cell{border:4px solid #111;border-radius:12px;padding:10px;text-align:center;background:#fff;box-shadow:5px 5px 0 #111}
+.cell canvas{width:90px;height:90px;background:#000;border-radius:50%;display:block;margin:0 auto 6px;image-rendering:pixelated;border:3px solid #111}
+.cell .name{font-weight:900;text-transform:capitalize;margin:4px 0;color:#1742d1}
+.cell .src{font-size:11px;color:#666;font-weight:700;margin-bottom:8px}
+.cell button{display:block;width:100%;margin:5px 0;padding:7px;font-size:13px;font-weight:900;text-transform:uppercase;
+             border:3px solid #111;border-radius:20px;cursor:pointer;box-shadow:3px 3px 0 #111}
+.cell button:active{transform:translate(2px,2px);box-shadow:1px 1px 0 #111}
+.btn-primary{background:#42c98e;color:#111}
+.btn-secondary{background:#fff;color:#111}
+.btn-danger{background:#ff2d2d;color:#fff}
+.actions{display:flex;gap:12px;flex-wrap:wrap;margin:20px 0}
+.actions button{flex:1;min-width:140px;padding:11px;font-size:14px;font-weight:900;text-transform:uppercase;
+                border:4px solid #111;border-radius:30px;cursor:pointer;box-shadow:5px 5px 0 #111}
+.actions button:active{transform:translate(2px,2px);box-shadow:3px 3px 0 #111}
+.actions .btn-secondary{background:#1742d1;color:#fff}
+#status{padding:11px;border:3px solid #111;border-radius:10px;margin:10px 0;display:none;font-weight:700;box-shadow:4px 4px 0 #111}
+.status-ok{background:#42c98e;color:#111}
+.status-err{background:#ff2d2d;color:#fff}
+.status-info{background:#ffe34d;color:#111}
+.help{font-size:13px;color:#444;font-weight:700;margin-top:8px}
+.help a{color:#1742d1;font-weight:900}
 nav{margin-bottom:10px}
-nav a{color:#007bff;text-decoration:none}
+nav a{color:#1742d1;text-decoration:none;font-weight:900}
+.footer{text-align:center;margin:28px 0 6px;font-size:13px;font-weight:700;color:#111}
+.footer a{font-weight:900}
 </style></head><body>
 <div class="container">
 <nav><a href="/">&larr; Settings</a></nav>
@@ -52,6 +61,7 @@ nav a{color:#007bff;text-decoration:none}
 </div>
 <input type="file" id="file-import" accept=".zip" style="display:none">
 <p class="help">Source images should be square; the display is 240x240 round and corners are clipped. <a href="https://github.com/uditir/05_voice_agent_5/blob/main/voice_agent_5/docs/emoji-customization.md" target="_blank">How to prepare emojis</a></p>
+<div class="footer">developed by <a href="https://www.iollama.com/" target="_blank" rel="noopener">iollama</a></div>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/omggif@1.0.10/omggif.js" integrity="sha384-MyJfgL1BC/8IpGowcTSNInyyiYYLLUEEDACAIkOlzV68oYz87Pu5amdJWCO3NtFo" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js" integrity="sha384-+mbV2IY1Zk/X1p/nWllGySJSUN8uMs+gUAN10Or95UBH0fpj6GfKgPmgC5EXieXG" crossorigin="anonymous"></script>
