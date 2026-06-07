@@ -54,8 +54,13 @@ textarea{min-height:120px;resize:vertical}
 .row label{margin:0;text-transform:none;font-size:14px;font-weight:700}
 .row input[type=checkbox]{width:18px;height:18px}
 .emoji-row{display:flex;align-items:center;justify-content:space-between;gap:10px}
-.ioCatName{font-weight:900;color:var(--blue);text-transform:uppercase;font-size:13px;margin:12px 0 6px}
-.ioGrid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.ioCat{margin-top:10px}
+.ioCatHdr{width:100%;text-align:left;background:var(--blue);color:#fff;border:3px solid var(--ink);border-radius:8px;padding:9px 12px;font-weight:900;font-size:13px;text-transform:uppercase;cursor:pointer;box-shadow:3px 3px 0 var(--ink)}
+.ioCatHdr:active{transform:translate(2px,2px);box-shadow:1px 1px 0 var(--ink)}
+.ioCaret{display:inline-block;transition:transform .12s;margin-right:4px}
+.ioCatHdr.open .ioCaret{transform:rotate(90deg)}
+.ioCatN{float:right;opacity:.85;font-weight:700}
+.ioGrid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:8px}
 .ioTile{border:3px solid var(--ink);border-radius:10px;background:#fff;padding:8px;text-align:center;cursor:pointer;box-shadow:4px 4px 0 var(--ink)}
 .ioTile:active{transform:translate(2px,2px);box-shadow:2px 2px 0 var(--ink)}
 .ioTile img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:50%;border:3px solid var(--ink);background:#000;display:block;margin-bottom:6px}
@@ -129,13 +134,6 @@ textarea{min-height:120px;resize:vertical}
     <button type="button" id="ioBrowse" class="btn go sm" style="margin-top:0">&#128270; Browse</button>
     <button type="button" id="ioExport" class="btn sm">Export profile &#9656;</button>
     <button type="button" id="ioImportFile" class="btn sm">Import from file</button>
-    <button type="button" id="ioImportUrlBtn" class="btn ghost sm">Import from URL</button>
-    <div id="ioUrlRow" style="display:none;margin-top:12px">
-      <label for="ioUrl">Profile .zip URL</label>
-      <input type="text" id="ioUrl" placeholder="https://.../persona.zip">
-      <div class="hint">Use a direct, CORS-enabled link (e.g. a GitHub raw or release URL).</div>
-      <button type="button" id="ioUrlGo" class="btn go sm">Fetch &amp; import &#9656;</button>
-    </div>
     <div id="ioRepoRow" style="display:none;margin-top:12px">
       <div class="hint" style="margin-bottom:8px">Pick a ready-made persona from the gallery. It replaces your persona text and emoji.</div>
       <div id="ioRepoCatalog"></div>
@@ -305,10 +303,12 @@ function ioRenderCatalog(index){
   root.innerHTML = '';
   const cats = (index && index.categories) || [];
   if (!cats.length){ root.innerHTML = '<div class="hint">No personas found in the gallery.</div>'; return; }
-  for (const cat of cats){
-    const h = document.createElement('div'); h.className='ioCatName'; h.textContent = cat.name || 'Personas';
-    root.appendChild(h);
-    const grid = document.createElement('div'); grid.className='ioGrid';
+  cats.forEach(cat=>{
+    const sec = document.createElement('div'); sec.className='ioCat';
+    const hdr = document.createElement('button'); hdr.type='button'; hdr.className='ioCatHdr';
+    const n = (cat.personas || []).length;
+    hdr.innerHTML = '<span class="ioCaret">&#9656;</span>' + esc(cat.name || 'Personas') + '<span class="ioCatN">' + n + '</span>';
+    const grid = document.createElement('div'); grid.className='ioGrid'; grid.style.display='none';
     for (const p of (cat.personas || [])){
       const tile = document.createElement('div'); tile.className='ioTile'; tile.title = 'Import ' + p.name;
       const src = p.thumb ? VA.repoFileUrl(p.dir, p.thumb) : '';
@@ -316,8 +316,16 @@ function ioRenderCatalog(index){
       tile.addEventListener('click', ()=>ioImportPersona(p));
       grid.appendChild(tile);
     }
-    root.appendChild(grid);
-  }
+    hdr.addEventListener('click', ()=>{
+      const willOpen = grid.style.display === 'none';
+      // Accordion: close every section, then open the clicked one if it was closed.
+      root.querySelectorAll('.ioGrid').forEach(g=>g.style.display='none');
+      root.querySelectorAll('.ioCatHdr').forEach(h=>h.classList.remove('open'));
+      if (willOpen){ grid.style.display='grid'; hdr.classList.add('open'); }
+    });
+    sec.appendChild(hdr); sec.appendChild(grid);
+    root.appendChild(sec);
+  });
 }
 async function ioLoadCatalog(){
   try{
@@ -345,15 +353,6 @@ $('ioImportFile').addEventListener('click', ()=>$('ioFile').click());
 $('ioFile').addEventListener('change', async ev=>{
   const f = ev.target.files[0]; ev.target.value=''; if (!f) return;
   try{ ioStatus('Reading file...', 'info'); await ioApply(await JSZip.loadAsync(f)); }
-  catch(e){ ioStatus('Import failed: ' + e.message, 'err'); }
-});
-$('ioImportUrlBtn').addEventListener('click', ()=>{
-  const row = $('ioUrlRow'); row.style.display = (row.style.display==='none') ? 'block' : 'none';
-});
-$('ioUrlGo').addEventListener('click', async ()=>{
-  const url = $('ioUrl').value.trim();
-  if (!url){ ioStatus('Enter a URL first', 'err'); return; }
-  try{ ioStatus('Fetching ' + url + '...', 'info'); await ioApply(await VA.fetchZipFromUrl(url)); }
   catch(e){ ioStatus('Import failed: ' + e.message, 'err'); }
 });
 </script>

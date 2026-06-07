@@ -135,11 +135,85 @@
                                         ]
                        },
                        {
+                           "name":  "Historical",
+                           "personas":  [
+                                            {
+                                                "name":  "David Ben-Gurion",
+                                                "dir":  "Historical/David Ben-Gurion",
+                                                "persona":  "persona.md",
+                                                "settings":  null,
+                                                "thumb":  "neutral.jpg",
+                                                "emotions":  {
+                                                                 "neutral":  "neutral.jpg",
+                                                                 "happy":  "happy.jpg",
+                                                                 "excited":  "excited.jpg",
+                                                                 "empathetic":  "empathetic.jpg",
+                                                                 "confused":  "confused.jpg",
+                                                                 "concerned":  "concerned.jpg",
+                                                                 "thinking":  "thinking.jpg"
+                                                             }
+                                            },
+                                            {
+                                                "name":  "Ze\u0027ev Jabotinsky",
+                                                "dir":  "Historical/Ze\u0027ev Jabotinsky",
+                                                "persona":  "persona.md",
+                                                "settings":  null,
+                                                "thumb":  "neutral.jpg",
+                                                "emotions":  {
+                                                                 "neutral":  "neutral.jpg",
+                                                                 "happy":  "happy.jpg",
+                                                                 "excited":  "excited.jpg",
+                                                                 "empathetic":  "empathetic.jpg",
+                                                                 "confused":  "confused.jpg",
+                                                                 "concerned":  "concerned.jpg",
+                                                                 "thinking":  "thinking.jpg"
+                                                             }
+                                            }
+                                        ]
+                       },
+                       {
+                           "name":  "Philosophy",
+                           "personas":  [
+                                            {
+                                                "name":  "Friedrich Nietzsche",
+                                                "dir":  "Philosophy/Friedrich Nietzsche",
+                                                "persona":  "persona.md",
+                                                "settings":  null,
+                                                "thumb":  "neutral.jpg",
+                                                "emotions":  {
+                                                                 "neutral":  "neutral.jpg",
+                                                                 "happy":  "happy.jpg",
+                                                                 "excited":  "excited.jpg",
+                                                                 "empathetic":  "empathetic.jpg",
+                                                                 "confused":  "confused.jpg",
+                                                                 "concerned":  "concerned.jpg",
+                                                                 "thinking":  "thinking.jpg"
+                                                             }
+                                            }
+                                        ]
+                       },
+                       {
                            "name":  "Theological",
                            "personas":  [
                                             {
                                                 "name":  "Archangel Michael",
                                                 "dir":  "Theological/Archangel Michael",
+                                                "persona":  "persona.md",
+                                                "settings":  null,
+                                                "thumb":  "neutral.jpg",
+                                                "emotions":  {
+                                                                 "neutral":  "neutral.jpg",
+                                                                 "happy":  "happy.jpg",
+                                                                 "excited":  "excited.jpg",
+                                                                 "empathetic":  "empathetic.jpg",
+                                                                 "confused":  "confused.jpg",
+                                                                 "concerned":  "concerned.jpg",
+                                                                 "thinking":  "thinking.jpg"
+                                                             }
+                                            },
+                                            {
+                                                "name":  "Metatron",
+                                                "dir":  "Theological/Metatron",
                                                 "persona":  "persona.md",
                                                 "settings":  null,
                                                 "thumb":  "neutral.jpg",

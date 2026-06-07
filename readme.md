@@ -71,7 +71,7 @@ The assistant can also call **OpenAI function tools** during a response — curr
 | LRC | GPIO 21 | Word select / LRCLK (shared) |
 | SD | 3.3V *or* GPIO 38 | 3.3V keeps the amp always on (legacy wiring). Tie to GPIO 38 instead if you've also populated the PCM5102A and want to switch between them from the portal. |
 | VIN | 5V | |
-| GAIN | Not connected | Default 9 dB gain |
+| GAIN | 3.3V | 6 dB gain (recommended) -- avoids amp clipping/distortion into an 8 Ω speaker at high volume |
 | GND | GND | |
 
 ### Headphone DAC (optional) -- PCM5102A
@@ -239,7 +239,7 @@ From the settings page you can configure:
 - **Language** -- The language the assistant speaks. Default **Automatic** matches whatever language you speak; pick a specific language to force every reply into it. Takes effect on the next session
 - **Volume** (0 - 100%) -- Speaker playback volume
 - **Audio Output** -- Speaker or Headphones (only if the optional PCM5102A DAC is installed)
-- **Import / Export Profile** -- **Browse** a gallery of ready-made personas, or back up / transfer your own persona, voice, volume and emoji as a single `.zip` (from a file or a URL). Secrets (Wi-Fi, API key) are never exported. Needs the browser to be online. See [voice_agent_5/docs/profile-import-export.md](voice_agent_5/docs/profile-import-export.md).
+- **Import / Export Profile** -- **Browse** a gallery of ready-made personas, or back up / transfer your own persona, voice, volume and emoji as a single `.zip` file. Secrets (Wi-Fi, API key) are never exported. Needs the browser to be online. See [voice_agent_5/docs/profile-import-export.md](voice_agent_5/docs/profile-import-export.md).
 
 Less-common options live behind the **Admin Zone** toggle further down the page: Wi-Fi network, your **API Key** (override the compiled `config.h` key, stored in NVS), conversation behavior (Persist Conversation, Verbose Logging), and token usage.
 

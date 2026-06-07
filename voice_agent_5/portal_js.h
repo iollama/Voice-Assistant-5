@@ -373,15 +373,6 @@
     return out;
   }
 
-  async function fetchZipFromUrl(url){
-    let resp;
-    try { resp = await fetch(url, {cache:'no-store'}); }
-    catch(e){ throw new Error("Couldn't fetch URL (blocked by CORS or no internet). Use a direct, CORS-enabled link, e.g. a GitHub raw/release URL."); }
-    if (!resp.ok) throw new Error('URL returned HTTP ' + resp.status);
-    const blob = await resp.blob();
-    return await JSZip.loadAsync(blob);
-  }
-
   function downloadBlob(blob, filename){
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
@@ -431,7 +422,7 @@
     rgba_to_rgb565_le, rgb565_le_to_rgba, drawCover, decodeFile, uploadFrames,
     addEmojiToZip, zipHasEmoji, applyEmoji, applyEmojiFromZip,
     buildProfileZip, applyProfile, applyProfileFromZip, memFiles,
-    fetchZipFromUrl, downloadBlob, fetchRepoIndex, repoFileUrl, importRepoPersona
+    downloadBlob, fetchRepoIndex, repoFileUrl, importRepoPersona
   });
 })();
 </script>)JS"

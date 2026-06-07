@@ -42,15 +42,8 @@ imports them through the same path as a file import.
 
 ## Importing
 
-In the same card you can also import **from a file** or **from a URL**:
-
-- **Import from file** → pick a `persona.zip` (or any zip containing some of the
-  pieces below).
-- **Import from URL** → paste a direct link to a profile zip and click **Fetch & import**.
-  The URL must be a **direct, CORS-enabled link** (e.g. a GitHub *raw* or *release-asset* URL)
-  and your browser must be online and able to reach it. If the host doesn't allow
-  cross-origin reads, the browser blocks it and you'll see a CORS error — re-host the file on
-  a CORS-friendly URL.
+In the same card, **Import from file** lets you pick a `persona.zip` (or any zip containing
+some of the pieces below).
 
 Import **applies live, no reboot**: persona overwrites the current persona, volume/voice/language
 take effect (voice and language on the next session), and emoji frames replace your customizations.
