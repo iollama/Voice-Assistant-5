@@ -40,6 +40,8 @@ The sketch is split across multiple `.ino` files in the sketch folder. The Ardui
 | `wifi.ino` | `connectToWiFi()`, `setupMDNS()`, `syncTime()`, `init_wifi_and_time()`, `start_soft_ap()` |
 | `root_page.h` | Static HTML/CSS/JS for the main settings page (`GET /`), served via `send_P`. Live values are fetched client-side from `GET /api/config`. Included from `webserver.ino`. |
 | `emojis_page.h` | Static HTML+JS for `GET /emojis` — included from `webserver.ino`. Both `*_page.h` files live in their own headers because the Arduino auto-prototyper mis-parses `async function` inside a raw string as a C++ prototype. |
+| `theme_css.h` | Shared "neo-brutalist sticker" theme — a `THEME_CSS` raw-string-literal macro (`:root` palette + base rules) that `root_page.h` and `emojis_page.h` concatenate inline via adjacent string literals. Each page stays a single `PROGMEM` blob served by one `send_P` (no heap, no extra round-trip, still self-contained for the captive portal). Lives in a `.h` for the same auto-prototyper reason as the page files. |
+| `portal_js.h` | Shared browser JavaScript — a `PORTAL_JS` raw-string-literal macro concatenated into both `root_page.h` and `emojis_page.h` the same way as `THEME_CSS`. Exposes a `window.VA` namespace of reusable helpers (RGB565 frame conversion, GIF/MP4 decoding, emoji upload, profile ZIP build, a file-map-based `applyProfile`/`applyEmoji` apply path, and the "Browse" repo-catalog import). The `REPO`/`BRANCH` constants near the top select the persona gallery source (`personas/index.json` on raw GitHub). Requires JSZip (+ omggif) from the CDN. Lives in a `.h` for the same auto-prototyper reason. |
 
 The `src/` folder contains the vendored ArduinoWebsockets library and is not part of the sketch code.
 
@@ -518,7 +520,7 @@ Customization happens in the user's browser. The device serves a captive-portal 
 
 All write endpoints (POST) return **HTTP 409** when `g_state ∈ {RECORDING, THINKING, SPEAKING}`. `server.handleClient()` runs on Core 1 alongside I2S; rejecting uploads during a turn keeps the audio path uncontested. A single-flight `g_emoji_upload_active` flag also rejects a second upload that overlaps the first (the multipart upload spans many `handleClient()` calls).
 
-Library dependencies for the page (omggif, JSZip) are loaded from jsdelivr with SRI hashes pinned in `emojis_page.h`. Trade-off: customization requires the user's browser to have internet during the visit; the device itself stays local-only. End-user docs: [emoji-customization.md](emoji-customization.md).
+Library dependencies for the portal pages (omggif, JSZip) are loaded from jsdelivr with SRI hashes pinned in both `emojis_page.h` and `root_page.h` (the main page also needs them now, for the profile import/export added via `portal_js.h`). Trade-off: customization and profile import/export require the user's browser to have internet during the visit; the device itself stays local-only. End-user docs: [emoji-customization.md](emoji-customization.md) and [profile-import-export.md](profile-import-export.md).
 
 ### Runtime Flow
 

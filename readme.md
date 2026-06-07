@@ -12,7 +12,7 @@ Meet your new desk companion: press the button, ask it anything, and get an inst
 - **Glance to know what it's doing** -- a colored light tells you when it's listening, thinking, or speaking
 - **The assistant adjusts its own volume** -- say "speak up" or "quieter please" and it adjusts in real time; the new level persists across reboots
 - **Plug in your own OpenAI key** -- you control the account and the cost, no subscription in the middle
-- **Make the face your own** -- drop in a GIF, PNG, or JPG from the web portal and the assistant uses it as the on-device emoji; reset back to the defaults any time
+- **Make the face your own** -- drop in a GIF, PNG, JPG, or MP4 from the web portal and the assistant uses it as the on-device emoji; reset back to the defaults any time
 - **It remembers the conversation** -- pick up where you left off instead of starting from scratch
 - **Set up WiFi once** -- connect from your phone the first time, it remembers your network forever
 - **Build it yourself for ~$20** -- 3D-printed case included, full source open and hackable, parts links provided
@@ -236,8 +236,10 @@ From the settings page you can configure:
 
 - **System Prompt** -- Control the assistant's persona and response style
 - **Voice** -- One of the 10 OpenAI Realtime voices (`marin`, `cedar`, `alloy`, `ash`, `ballad`, `coral`, `echo`, `sage`, `shimmer`, `verse`); selection takes effect on the next session
+- **Language** -- The language the assistant speaks. Default **Automatic** matches whatever language you speak; pick a specific language to force every reply into it. Takes effect on the next session
 - **Volume** (0 - 100%) -- Speaker playback volume
 - **Audio Output** -- Speaker or Headphones (only if the optional PCM5102A DAC is installed)
+- **Import / Export Profile** -- **Browse** a gallery of ready-made personas, or back up / transfer your own persona, voice, volume and emoji as a single `.zip` (from a file or a URL). Secrets (Wi-Fi, API key) are never exported. Needs the browser to be online. See [voice_agent_5/docs/profile-import-export.md](voice_agent_5/docs/profile-import-export.md).
 
 Less-common options live behind the **Admin Zone** toggle further down the page: Wi-Fi network, your **API Key** (override the compiled `config.h` key, stored in NVS), conversation behavior (Persist Conversation, Verbose Logging), and token usage.
 
@@ -253,7 +255,7 @@ All settings are saved to NVS and persist across reboots. Use **Restore defaults
 
 ### Replacing Emojis from Your Browser
 
-Once the device is on WiFi, browse to `http://voice-agent-XXYY.local/emojis` (or hit **Open editor** on the main settings page). Drop in a GIF, PNG, or JPG for any of the seven moods and the assistant will use it immediately -- no re-flash, no Python, no SD card. The shipped defaults are stored separately and are never overwritten, so there is no way to brick the device through customization; reset any mood (or all of them) at any time. See [voice_agent_5/docs/emoji-customization.md](voice_agent_5/docs/emoji-customization.md) for the full walkthrough, supported formats, and how to share an emoji pack.
+Once the device is on WiFi, browse to `http://voice-agent-XXYY.local/emojis` (or hit **Open editor** on the main settings page). Drop in a GIF, PNG, JPG, or H.264 MP4 for any of the seven moods and the assistant will use it immediately -- no re-flash, no Python, no SD card. The shipped defaults are stored separately and are never overwritten, so there is no way to brick the device through customization; reset any mood (or all of them) at any time. See [voice_agent_5/docs/emoji-customization.md](voice_agent_5/docs/emoji-customization.md) for the full walkthrough, supported formats, and how to share an emoji pack.
 
 The customization page needs your browser to have internet access (it loads the GIF decoder and zip libraries from a CDN). The device itself stays local-only.
 

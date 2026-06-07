@@ -97,11 +97,28 @@ static void handleResponseDone(const String& payload) {
 
 // ---- Session setup ---------------------------------------------------
 
+// Final model instructions = persona text plus, when a specific language is set
+// (not "auto"), a forced language directive. "auto" adds nothing so the model
+// matches the speaker. Built once per session in buildSessionUpdate() (not the
+// audio hot path), so the String concatenation here is fine.
+static String buildInstructions() {
+    String out = g_sys_instruction;
+    if (g_language.length() && g_language != "auto") {
+        const char* name = language_label(g_language);
+        out += "\n\n# Language\nAlways respond only in ";
+        out += name;
+        out += ". Even if the user speaks or writes in another language, reply only in ";
+        out += name;
+        out += ".";
+    }
+    return out;
+}
+
 static String buildSessionUpdate() {
     String s = "{\"type\":\"session.update\",\"session\":{"
                "\"type\":\"realtime\","
                "\"instructions\":";
-    s += jsonEscape(g_sys_instruction);
+    s += jsonEscape(buildInstructions());
     s += ",\"audio\":{"
            "\"input\":{\"format\":{\"type\":\"audio/pcm\",\"rate\":24000},\"turn_detection\":null},"
            "\"output\":{\"format\":{\"type\":\"audio/pcm\",\"rate\":24000},\"voice\":";

@@ -6,51 +6,47 @@
 
 #pragma once
 
+#include "theme_css.h"
+#include "portal_js.h"
+
 static const char EMOJIS_PAGE_HTML[] PROGMEM = R"PAGE(<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><title>Voice Agent - Emojis</title>
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<style>
-*{box-sizing:border-box}
-body{font-family:"Comic Sans MS","Arial Black",system-ui,sans-serif;color:#111;margin:0;padding:18px;
-     background:#fff200;background-image:radial-gradient(#0000001a 18%,transparent 19%);background-size:15px 15px}
+<meta name="viewport" content="width=device-width,initial-scale=1">)PAGE" THEME_CSS R"PAGE(<style>
 .container{max-width:760px;margin:0 auto}
-h2{position:relative;background:#ff2d2d;color:#fff;border:4px solid #111;border-radius:16px 16px 16px 3px;
-   padding:14px 18px;font-weight:900;font-size:24px;text-shadow:2px 2px 0 #111;box-shadow:7px 7px 0 #111;margin:0 0 12px}
-h3{color:#1742d1}
-a{color:#1742d1}
+h2{position:relative;background:var(--red);color:#fff;border:4px solid var(--ink);border-radius:16px 16px 16px 3px;
+   padding:14px 18px;font-weight:900;font-size:24px;text-shadow:2px 2px 0 var(--ink);box-shadow:7px 7px 0 var(--ink);margin:0 0 12px}
+h3{color:var(--blue)}
 .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:14px 0}
 .grid .row2{grid-column:span 1}
 .row2-wrap{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:14px;max-width:580px}
-.cell{border:4px solid #111;border-radius:12px;padding:10px;text-align:center;background:#fff;box-shadow:5px 5px 0 #111}
-.cell canvas{width:90px;height:90px;background:#000;border-radius:50%;display:block;margin:0 auto 6px;image-rendering:pixelated;border:3px solid #111}
-.cell .name{font-weight:900;text-transform:capitalize;margin:4px 0;color:#1742d1}
-.cell .src{font-size:11px;color:#666;font-weight:700;margin-bottom:8px}
+.cell{border:4px solid var(--ink);border-radius:12px;padding:10px;text-align:center;background:#fff;box-shadow:5px 5px 0 var(--ink)}
+.cell canvas{width:90px;height:90px;background:#000;border-radius:50%;display:block;margin:0 auto 6px;image-rendering:pixelated;border:3px solid var(--ink)}
+.cell .name{font-weight:900;text-transform:capitalize;margin:4px 0;color:var(--blue)}
+.cell .src{font-size:11px;color:var(--mute);font-weight:700;margin-bottom:8px}
 .cell button{display:block;width:100%;margin:5px 0;padding:7px;font-size:13px;font-weight:900;text-transform:uppercase;
-             border:3px solid #111;border-radius:20px;cursor:pointer;box-shadow:3px 3px 0 #111}
-.cell button:active{transform:translate(2px,2px);box-shadow:1px 1px 0 #111}
-.btn-primary{background:#42c98e;color:#111}
-.btn-secondary{background:#fff;color:#111}
-.btn-danger{background:#ff2d2d;color:#fff}
+             border:3px solid var(--ink);border-radius:20px;cursor:pointer;box-shadow:3px 3px 0 var(--ink)}
+.cell button:active{transform:translate(2px,2px);box-shadow:1px 1px 0 var(--ink)}
+.btn-primary{background:var(--green);color:var(--ink)}
+.btn-secondary{background:#fff;color:var(--ink)}
+.btn-danger{background:var(--red);color:#fff}
 .actions{display:flex;gap:12px;flex-wrap:wrap;margin:20px 0}
 .actions button{flex:1;min-width:140px;padding:11px;font-size:14px;font-weight:900;text-transform:uppercase;
-                border:4px solid #111;border-radius:30px;cursor:pointer;box-shadow:5px 5px 0 #111}
-.actions button:active{transform:translate(2px,2px);box-shadow:3px 3px 0 #111}
-.actions .btn-secondary{background:#1742d1;color:#fff}
-#status{padding:11px;border:3px solid #111;border-radius:10px;margin:10px 0;display:none;font-weight:700;box-shadow:4px 4px 0 #111}
-.status-ok{background:#42c98e;color:#111}
-.status-err{background:#ff2d2d;color:#fff}
-.status-info{background:#ffe34d;color:#111}
+                border:4px solid var(--ink);border-radius:30px;cursor:pointer;box-shadow:5px 5px 0 var(--ink)}
+.actions button:active{transform:translate(2px,2px);box-shadow:3px 3px 0 var(--ink)}
+.actions .btn-secondary{background:var(--blue);color:#fff}
+#status{padding:11px;border:3px solid var(--ink);border-radius:10px;margin:10px 0;display:none;font-weight:700;box-shadow:4px 4px 0 var(--ink)}
+.status-ok{background:var(--green);color:var(--ink)}
+.status-err{background:var(--red);color:#fff}
+.status-info{background:var(--yellow);color:var(--ink)}
 .help{font-size:13px;color:#444;font-weight:700;margin-top:8px}
-.help a{color:#1742d1;font-weight:900}
+.help a{color:var(--blue);font-weight:900}
 nav{margin-bottom:10px}
-nav a{color:#1742d1;text-decoration:none;font-weight:900}
-.footer{text-align:center;margin:28px 0 6px;font-size:13px;font-weight:700;color:#111}
-.footer a{font-weight:900}
+nav a{color:var(--blue);text-decoration:none;font-weight:900}
 </style></head><body>
 <div class="container">
 <nav><a href="/">&larr; Settings</a></nav>
 <h2>Emojis</h2>
-<p>Replace the on-device emoji animations with your own. GIF (animated, up to 8 frames), PNG, or JPG. Conversion happens in your browser - no Python required.</p>
+<p>Replace the on-device emoji animations with your own. GIF, PNG, JPG, or MP4 (H.264).</p>
 <div id="status"></div>
 <div id="grid-top" class="grid"></div>
 <div id="grid-bottom" class="row2-wrap"></div>
@@ -60,18 +56,16 @@ nav a{color:#1742d1;text-decoration:none;font-weight:900}
 <button id="btn-reset-all" class="btn-danger">Reset all to defaults</button>
 </div>
 <input type="file" id="file-import" accept=".zip" style="display:none">
-<p class="help">Source images should be square; the display is 240x240 round and corners are clipped. <a href="https://github.com/uditir/05_voice_agent_5/blob/main/voice_agent_5/docs/emoji-customization.md" target="_blank">How to prepare emojis</a></p>
+<p class="help">Source images should be square; the display is 240x240 round and corners are clipped. <a href="https://github.com/iollama/Voice-Assistant-5/blob/main/voice_agent_5/docs/emoji-customization.md" target="_blank">How to prepare emojis</a> for developers. (Everyone else can simply upload from here) </p>
 <div class="footer">developed by <a href="https://www.iollama.com/" target="_blank" rel="noopener">iollama</a></div>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/omggif@1.0.10/omggif.js" integrity="sha384-MyJfgL1BC/8IpGowcTSNInyyiYYLLUEEDACAIkOlzV68oYz87Pu5amdJWCO3NtFo" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js" integrity="sha384-+mbV2IY1Zk/X1p/nWllGySJSUN8uMs+gUAN10Or95UBH0fpj6GfKgPmgC5EXieXG" crossorigin="anonymous"></script>
-<script>
+)PAGE" PORTAL_JS R"PAGE(<script>
 const EMOTIONS_TOP = ["neutral","happy","excited","empathetic"];
 const EMOTIONS_BOTTOM = ["confused","concerned","thinking"];
 const ALL_EMOTIONS = EMOTIONS_TOP.concat(EMOTIONS_BOTTOM);
-const FRAME_PX = 150;
-const FRAME_BYTES = FRAME_PX*FRAME_PX*2;
-const MAX_FRAMES = 8;
+const { FRAME_PX, FRAME_BYTES, MAX_FRAMES, decodeFile, uploadFrames, rgb565_le_to_rgba } = VA;
 
 const $ = id => document.getElementById(id);
 function setStatus(msg, kind){
@@ -79,87 +73,6 @@ function setStatus(msg, kind){
   s.textContent = msg;
   s.className = 'status-' + (kind||'info');
   s.style.display = msg ? 'block' : 'none';
-}
-
-function rgba_to_rgb565_le(rgba){
-  const out = new Uint8Array(FRAME_BYTES);
-  for (let i=0,j=0; i<rgba.length; i+=4, j+=2){
-    const r=rgba[i], g=rgba[i+1], b=rgba[i+2];
-    const v=((r&0xF8)<<8)|((g&0xFC)<<3)|(b>>3);
-    out[j]=v&0xFF; out[j+1]=v>>8;
-  }
-  return out;
-}
-function rgb565_le_to_rgba(bytes){
-  const out = new Uint8ClampedArray(FRAME_PX*FRAME_PX*4);
-  for (let i=0,j=0; i<bytes.length; i+=2, j+=4){
-    const v = bytes[i]|(bytes[i+1]<<8);
-    const r5=(v>>11)&0x1F, g6=(v>>5)&0x3F, b5=v&0x1F;
-    out[j]   = (r5<<3)|(r5>>2);
-    out[j+1] = (g6<<2)|(g6>>4);
-    out[j+2] = (b5<<3)|(b5>>2);
-    out[j+3] = 255;
-  }
-  return out;
-}
-
-function drawCover(ctx, src, sw, sh){
-  ctx.fillStyle='#000'; ctx.fillRect(0,0,FRAME_PX,FRAME_PX);
-  const scale = Math.max(FRAME_PX/sw, FRAME_PX/sh);
-  const dw = sw*scale, dh = sh*scale;
-  ctx.drawImage(src, (FRAME_PX-dw)/2, (FRAME_PX-dh)/2, dw, dh);
-}
-
-async function decodeFile(file){
-  const buf = new Uint8Array(await file.arrayBuffer());
-  const isGif = buf.length>3 && buf[0]==0x47 && buf[1]==0x49 && buf[2]==0x46;
-  const isPng = buf.length>3 && buf[0]==0x89 && buf[1]==0x50;
-  const isJpg = buf.length>2 && buf[0]==0xFF && buf[1]==0xD8;
-  if (!isGif && !isPng && !isJpg) throw new Error('Unsupported file type (use GIF, PNG, or JPG)');
-
-  const canvas = document.createElement('canvas');
-  canvas.width = FRAME_PX; canvas.height = FRAME_PX;
-  const ctx = canvas.getContext('2d');
-
-  if (isGif){
-    const reader = new GifReader(buf);
-    const total = reader.numFrames();
-    const want = new Set();
-    if (total <= MAX_FRAMES) for (let i=0;i<total;i++) want.add(i);
-    else for (let i=0;i<MAX_FRAMES;i++) want.add(Math.floor(i*total/MAX_FRAMES));
-    const lw = reader.width, lh = reader.height;
-    const pixels = new Uint8Array(lw*lh*4);
-    const work = document.createElement('canvas'); work.width=lw; work.height=lh;
-    const wctx = work.getContext('2d');
-    const out = [];
-    for (let i=0; i<total; i++){
-      reader.decodeAndBlitFrameRGBA(i, pixels);
-      if (!want.has(i)) continue;
-      const id = new ImageData(new Uint8ClampedArray(pixels), lw, lh);
-      wctx.putImageData(id, 0, 0);
-      drawCover(ctx, work, lw, lh);
-      out.push(rgba_to_rgb565_le(ctx.getImageData(0,0,FRAME_PX,FRAME_PX).data));
-    }
-    return out;
-  }
-
-  const img = new Image();
-  await new Promise((res,rej)=>{ img.onload=res; img.onerror=()=>rej(new Error('Decode failed')); img.src=URL.createObjectURL(file); });
-  drawCover(ctx, img, img.naturalWidth, img.naturalHeight);
-  return [rgba_to_rgb565_le(ctx.getImageData(0,0,FRAME_PX,FRAME_PX).data)];
-}
-
-async function uploadFrames(emotion, frames){
-  const body = new Uint8Array(frames.length * FRAME_BYTES);
-  for (let i=0; i<frames.length; i++) body.set(frames[i], i*FRAME_BYTES);
-  const fd = new FormData();
-  fd.append('frames', new Blob([body], {type:'application/octet-stream'}), 'frames.bin');
-  const r = await fetch('/api/emoji/'+emotion, {method:'POST', body:fd});
-  if (!r.ok){
-    const t = await r.text();
-    throw new Error('Upload failed: ' + r.status + ' ' + t);
-  }
-  return r.json();
 }
 
 async function paintThumbnail(emotion){
@@ -191,7 +104,7 @@ function buildCell(emotion, manifest){
     '<div class="src">'+m.source+' &middot; '+m.count+' frame'+(m.count===1?'':'s')+'</div>'+
     '<button class="btn-primary" data-replace="'+emotion+'">Replace</button>'+
     '<button class="btn-secondary" data-reset="'+emotion+'">Reset</button>'+
-    '<input type="file" accept=".gif,.png,.jpg,.jpeg,image/gif,image/png,image/jpeg" data-file="'+emotion+'" style="display:none">';
+    '<input type="file" accept=".gif,.png,.jpg,.jpeg,.mp4,image/gif,image/png,image/jpeg,video/mp4" data-file="'+emotion+'" style="display:none">';
   return div;
 }
 
@@ -254,74 +167,28 @@ async function replaceOne(emotion, file){
 async function exportPack(){
   try{
     setStatus('Building pack...', 'info');
-    const manifest = await (await fetch('/api/emoji/manifest', {cache:'no-store'})).json();
     const zip = new JSZip();
-    const customManifest = {};
-    for (const e of ALL_EMOTIONS){
-      const m = manifest[e];
-      if (!m || m.source !== 'custom') continue;
-      customManifest[e] = {count: m.count};
-      for (let i=0; i<m.count; i++){
-        const r = await fetch('/api/emoji/'+e+'/'+i+'.bin', {cache:'no-store'});
-        const buf = await r.arrayBuffer();
-        zip.file(e+'_'+i+'.bin', buf);
-      }
-    }
-    if (Object.keys(customManifest).length === 0){
-      setStatus('No custom emojis to export', 'info'); return;
-    }
-    zip.file('manifest.json', JSON.stringify(customManifest, null, 2));
+    const n = await VA.addEmojiToZip(zip, {customOnly:true, statusCb:setStatus});
+    if (n === 0){ setStatus('No custom emojis to export', 'info'); return; }
     const blob = await zip.generateAsync({type:'blob'});
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'emoji-pack.zip';
-    a.click();
-    setStatus('Exported '+Object.keys(customManifest).length+' custom emoji'+(Object.keys(customManifest).length===1?'':'s'), 'ok');
+    VA.downloadBlob(blob, 'emoji-pack.zip');
+    setStatus('Exported '+n+' custom emoji'+(n===1?'':'s'), 'ok');
   } catch(e){
     setStatus('Export failed: '+e.message, 'err');
   }
 }
 
+// Emoji page imports emoji ONLY -- any persona.md / settings.json in the zip is
+// ignored here (the main settings page is where a full profile is imported).
 async function importPack(file){
   try{
     setStatus('Reading pack...', 'info');
     const zip = await JSZip.loadAsync(file);
-    const hasBin = Object.keys(zip.files).some(n=>n.endsWith('.bin'));
-    const hasSrc = ALL_EMOTIONS.some(e=>['gif','png','jpg','jpeg'].some(ext=>zip.files[e+'.'+ext]));
-    if (!hasBin && !hasSrc) throw new Error('Pack contains no recognizable emoji files');
-
-    if (hasBin){
-      const manifestEntry = zip.files['manifest.json'];
-      if (!manifestEntry) throw new Error('Missing manifest.json in .bin pack');
-      const manifest = JSON.parse(await manifestEntry.async('string'));
-      for (const e of Object.keys(manifest)){
-        if (!ALL_EMOTIONS.includes(e)) continue;
-        const count = manifest[e].count;
-        const parts = [];
-        for (let i=0; i<count; i++){
-          const entry = zip.files[e+'_'+i+'.bin'];
-          if (!entry) throw new Error('Missing '+e+'_'+i+'.bin');
-          const bytes = new Uint8Array(await entry.async('uint8array'));
-          if (bytes.length !== FRAME_BYTES) throw new Error('Bad frame size for '+e+'_'+i);
-          parts.push(bytes);
-        }
-        setStatus('Importing '+e+'...', 'info');
-        await uploadFrames(e, parts);
-      }
-    } else {
-      for (const e of ALL_EMOTIONS){
-        let entry = null;
-        for (const ext of ['gif','png','jpg','jpeg']){
-          if (zip.files[e+'.'+ext]) { entry = zip.files[e+'.'+ext]; break; }
-        }
-        if (!entry) continue;
-        const blob = await entry.async('blob');
-        setStatus('Converting & importing '+e+'...', 'info');
-        const frames = await decodeFile(new File([blob], entry.name));
-        await uploadFrames(e, frames);
-      }
-    }
-    setStatus('Import done', 'ok');
+    const res = await VA.applyEmojiFromZip(zip, setStatus);
+    if (!res.found) throw new Error('Pack contains no recognizable emoji files');
+    let msg = 'Imported '+res.applied.length+' emoji';
+    if (res.skipped.length) msg += ', skipped '+res.skipped.length+' ('+res.skipped.map(s=>s.name).join(', ')+')';
+    setStatus(msg, res.skipped.length ? 'info' : 'ok');
     refreshGrid();
   } catch(e){
     setStatus('Import failed: '+e.message, 'err');

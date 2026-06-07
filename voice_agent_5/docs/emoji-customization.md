@@ -6,7 +6,7 @@ The voice agent ships with seven hand-drawn emoji animations: **neutral, happy, 
 
 1. Open the device's settings page in a browser (in AP mode, connect to the `VOICE-AGENT-xxxx` WiFi and visit `http://192.168.4.1/`; in normal mode, visit the IP shown on the device's info screen).
 2. Click **Open Emoji Settings**, or go straight to `http://<device>/emojis`.
-3. Click **Replace** on the emotion you want to change, pick a `.gif`, `.png`, or `.jpg` file.
+3. Click **Replace** on the emotion you want to change, pick a `.gif`, `.png`, `.jpg`, or `.mp4` file.
 4. Your browser converts it to the device's native format and uploads. The new emoji is live immediately.
 
 There is **no risk of bricking the device** through customization. The shipped defaults are read-only and live alongside your overrides. Reset any emotion at any time to fall back to its default.
@@ -21,8 +21,9 @@ There is **no risk of bricking the device** through customization. The shipped d
 | GIF (single frame) | 1 frame, displayed static |
 | PNG | 1 frame, displayed static |
 | JPG | 1 frame, displayed static |
+| MP4 (H.264) | 8 stills sampled evenly across the clip; animates at ~8 fps |
 
-Other formats (WebP, APNG, MP4, SVG, …) are not supported.
+Decoding happens in your browser, so MP4 support depends on the browser's built-in player: **H.264 (AVC) in an `.mp4` container works everywhere**. Other codecs/containers (HEVC/H.265 — common in iPhone recordings — VP9, AV1, `.mov`, `.webm`) may fail to decode depending on your browser; if a video won't convert, re-export it as H.264/MP4. Other formats (WebP, APNG, SVG, …) are not supported.
 
 ## Tips for good-looking emojis
 
@@ -42,6 +43,8 @@ Defaults are stored separately and are never written to from the portal. There i
 ## Sharing a pack
 
 The **Export pack** button downloads a `.zip` of all your customizations — useful as a backup or to share with another device's owner. The **Import pack** button accepts that same `.zip` to restore them.
+
+> This page deals with **emoji only**. Export pack includes just the moods you have customized, and Import pack applies only the emoji in a zip — if the zip also contains a `persona.md` or `settings.json` (i.e. it's a full device *profile*), those are **ignored** here. To back up or apply your persona, voice and volume together with the emoji, use **Import / Export Profile** on the main settings page instead — see [profile-import-export.md](profile-import-export.md). Note the two exports differ: `emoji-pack.zip` holds only your customized moods, whereas a profile's `persona.zip` holds all seven moods (custom or shipped default).
 
 ### Hand-authoring a pack zip
 

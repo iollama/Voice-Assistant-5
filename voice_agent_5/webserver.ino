@@ -38,6 +38,12 @@ void load_agent_config() {
             g_voice.c_str(), DEFAULT_VOICE);
     g_voice = DEFAULT_VOICE;
   }
+  g_language = preferences.getString("lang", DEFAULT_LANGUAGE);
+  if (!language_is_allowed(g_language)) {
+    CPRINTF("NVS: stored language '%s' not in whitelist, falling back to '%s'\n",
+            g_language.c_str(), DEFAULT_LANGUAGE);
+    g_language = DEFAULT_LANGUAGE;
+  }
   preferences.end();
 
   if (needs_sysprompt_migration) {
@@ -98,6 +104,14 @@ void handle_config() {
     if (i) json += ",";
     json += "{\"id\":\"" + String(VOICE_OPTIONS[i].id) + "\",";
     json += "\"label\":\"" + json_escape(VOICE_OPTIONS[i].label) + "\"}";
+  }
+  json += "],";
+  json += "\"language\":\"" + json_escape(g_language) + "\",";
+  json += "\"languages\":[";
+  for (size_t i = 0; i < LANGUAGE_OPTIONS_COUNT; ++i) {
+    if (i) json += ",";
+    json += "{\"id\":\"" + String(LANGUAGE_OPTIONS[i].id) + "\",";
+    json += "\"label\":\"" + json_escape(LANGUAGE_OPTIONS[i].label) + "\"}";
   }
   json += "],";
   json += "\"persist\":"  + String(g_persist_conversation ? "true" : "false") + ",";
@@ -165,6 +179,14 @@ void handle_save_agent() {
   } else if (submitted_voice.length() > 0) {
     CPRINTF("POST /saveAgent: voice '%s' not in whitelist, ignored\n",
             submitted_voice.c_str());
+  }
+  String submitted_language = server.arg("language");
+  if (language_is_allowed(submitted_language)) {
+    g_language = submitted_language;
+    preferences.putString("lang", g_language);
+  } else if (submitted_language.length() > 0) {
+    CPRINTF("POST /saveAgent: language '%s' not in whitelist, ignored\n",
+            submitted_language.c_str());
   }
   preferences.end();
   server.sendHeader("Location", "/", true);

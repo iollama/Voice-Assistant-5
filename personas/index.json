@@ -1,0 +1,159 @@
+{
+    "version":  1,
+    "categories":  [
+                       {
+                           "name":  "Biblical",
+                           "personas":  [
+                                            {
+                                                "name":  "Abraham",
+                                                "dir":  "Biblical/Abraham",
+                                                "persona":  "persona.md",
+                                                "settings":  null,
+                                                "thumb":  "neutral.jpg",
+                                                "emotions":  {
+                                                                 "neutral":  "neutral.jpg",
+                                                                 "happy":  "happy.jpg",
+                                                                 "excited":  "excited.jpg",
+                                                                 "empathetic":  "empathetic.jpg",
+                                                                 "confused":  "confused.jpg",
+                                                                 "concerned":  "concerned.jpg",
+                                                                 "thinking":  "thinking.jpg"
+                                                             }
+                                            },
+                                            {
+                                                "name":  "Adam",
+                                                "dir":  "Biblical/Adam",
+                                                "persona":  "persona.md",
+                                                "settings":  null,
+                                                "thumb":  "neutral.jpg",
+                                                "emotions":  {
+                                                                 "neutral":  "neutral.jpg",
+                                                                 "happy":  "happy.jpg",
+                                                                 "excited":  "excited.jpg",
+                                                                 "empathetic":  "empathetic.jpg",
+                                                                 "confused":  "confused.jpg",
+                                                                 "concerned":  "concerned.jpg",
+                                                                 "thinking":  "thinking.jpg"
+                                                             }
+                                            },
+                                            {
+                                                "name":  "Eve",
+                                                "dir":  "Biblical/Eve",
+                                                "persona":  "persona.md",
+                                                "settings":  null,
+                                                "thumb":  "neutral.jpg",
+                                                "emotions":  {
+                                                                 "neutral":  "neutral.jpg",
+                                                                 "happy":  "happy.jpg",
+                                                                 "excited":  "excited.jpg",
+                                                                 "empathetic":  "empathetic.jpg",
+                                                                 "confused":  "confused.jpg",
+                                                                 "concerned":  "concerned.jpg",
+                                                                 "thinking":  "thinking.jpg"
+                                                             }
+                                            },
+                                            {
+                                                "name":  "Joseph",
+                                                "dir":  "Biblical/Joseph",
+                                                "persona":  "persona.md",
+                                                "settings":  null,
+                                                "thumb":  "neutral.jpg",
+                                                "emotions":  {
+                                                                 "neutral":  "neutral.jpg",
+                                                                 "happy":  "happy.jpg",
+                                                                 "excited":  "excited.jpg",
+                                                                 "empathetic":  "empathetic.jpg",
+                                                                 "confused":  "confused.jpg",
+                                                                 "concerned":  "concerned.jpg",
+                                                                 "thinking":  "thinking.jpg"
+                                                             }
+                                            },
+                                            {
+                                                "name":  "King David",
+                                                "dir":  "Biblical/King David",
+                                                "persona":  "persona.md",
+                                                "settings":  null,
+                                                "thumb":  "neutral.jpg",
+                                                "emotions":  {
+                                                                 "neutral":  "neutral.jpg",
+                                                                 "happy":  "happy.jpg",
+                                                                 "excited":  "excited.jpg",
+                                                                 "empathetic":  "empathetic.jpg",
+                                                                 "confused":  "confused.jpg",
+                                                                 "concerned":  "concerned.jpg",
+                                                                 "thinking":  "thinking.jpg"
+                                                             }
+                                            },
+                                            {
+                                                "name":  "King Solomon",
+                                                "dir":  "Biblical/King Solomon",
+                                                "persona":  "persona.md",
+                                                "settings":  null,
+                                                "thumb":  "neutral.jpg",
+                                                "emotions":  {
+                                                                 "neutral":  "neutral.jpg",
+                                                                 "happy":  "happy.jpg",
+                                                                 "excited":  "excited.jpg",
+                                                                 "empathetic":  "empathetic.jpg",
+                                                                 "confused":  "confused.jpg",
+                                                                 "concerned":  "concerned.jpg",
+                                                                 "thinking":  "thinking.jpg"
+                                                             }
+                                            },
+                                            {
+                                                "name":  "Moses",
+                                                "dir":  "Biblical/Moses",
+                                                "persona":  "persona.md",
+                                                "settings":  null,
+                                                "thumb":  "neutral.jpg",
+                                                "emotions":  {
+                                                                 "neutral":  "neutral.jpg",
+                                                                 "happy":  "happy.jpg",
+                                                                 "excited":  "excited.jpg",
+                                                                 "empathetic":  "empathetic.jpg",
+                                                                 "confused":  "confused.jpg",
+                                                                 "concerned":  "concerned.jpg",
+                                                                 "thinking":  "thinking.jpg"
+                                                             }
+                                            },
+                                            {
+                                                "name":  "Noah",
+                                                "dir":  "Biblical/Noah",
+                                                "persona":  "persona.md",
+                                                "settings":  null,
+                                                "thumb":  "neutral.jpg",
+                                                "emotions":  {
+                                                                 "neutral":  "neutral.jpg",
+                                                                 "happy":  "happy.jpg",
+                                                                 "excited":  "excited.jpg",
+                                                                 "empathetic":  "empathetic.jpg",
+                                                                 "confused":  "confused.jpg",
+                                                                 "concerned":  "concerned.jpg",
+                                                                 "thinking":  "thinking.jpg"
+                                                             }
+                                            }
+                                        ]
+                       },
+                       {
+                           "name":  "Theological",
+                           "personas":  [
+                                            {
+                                                "name":  "Archangel Michael",
+                                                "dir":  "Theological/Archangel Michael",
+                                                "persona":  "persona.md",
+                                                "settings":  null,
+                                                "thumb":  "neutral.jpg",
+                                                "emotions":  {
+                                                                 "neutral":  "neutral.jpg",
+                                                                 "happy":  "happy.jpg",
+                                                                 "excited":  "excited.jpg",
+                                                                 "empathetic":  "empathetic.jpg",
+                                                                 "confused":  "confused.jpg",
+                                                                 "concerned":  "concerned.jpg",
+                                                                 "thinking":  "thinking.jpg"
+                                                             }
+                                            }
+                                        ]
+                       }
+                   ]
+}

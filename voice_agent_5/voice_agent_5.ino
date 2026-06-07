@@ -109,6 +109,7 @@ boolean ap_mode = false;
 #define DEFAULT_PERSIST_CONVO    true
 #define DEFAULT_VERBOSE_LOGGING  true
 #define DEFAULT_VOICE            "marin"
+#define DEFAULT_LANGUAGE         "auto"
 
 String g_sys_instruction;
 float  g_temperature;
@@ -117,6 +118,7 @@ bool   g_verbose_logging;
 String g_api_key;
 volatile int g_volume = 50;
 String g_voice;
+String g_language;
 
 struct VoiceOption {
   const char* id;
@@ -141,6 +143,46 @@ bool voice_is_allowed(const String& v) {
     if (v == VOICE_OPTIONS[i].id) return true;
   }
   return false;
+}
+
+// Spoken-language setting (mirrors the voice pattern). "auto" = no directive
+// (the model matches the speaker); any other id forces that language. The label
+// is the human name used in the instruction directive (see buildInstructions()).
+struct LanguageOption {
+  const char* id;
+  const char* label;
+};
+const LanguageOption LANGUAGE_OPTIONS[] = {
+  { "auto", "Automatic (match the speaker)" },
+  { "en",   "English" },
+  { "he",   "Hebrew" },
+  { "es",   "Spanish" },
+  { "fr",   "French" },
+  { "de",   "German" },
+  { "it",   "Italian" },
+  { "pt",   "Portuguese" },
+  { "ar",   "Arabic" },
+  { "ru",   "Russian" },
+  { "zh",   "Chinese (Mandarin)" },
+  { "ja",   "Japanese" },
+  { "hi",   "Hindi" },
+  { "ko",   "Korean" },
+};
+const size_t LANGUAGE_OPTIONS_COUNT = sizeof(LANGUAGE_OPTIONS) / sizeof(LANGUAGE_OPTIONS[0]);
+
+bool language_is_allowed(const String& l) {
+  for (size_t i = 0; i < LANGUAGE_OPTIONS_COUNT; ++i) {
+    if (l == LANGUAGE_OPTIONS[i].id) return true;
+  }
+  return false;
+}
+
+// Human-readable name for a language id (falls back to the id if unknown).
+const char* language_label(const String& id) {
+  for (size_t i = 0; i < LANGUAGE_OPTIONS_COUNT; ++i) {
+    if (id == LANGUAGE_OPTIONS[i].id) return LANGUAGE_OPTIONS[i].label;
+  }
+  return id.c_str();
 }
 
 // =====================================================================
