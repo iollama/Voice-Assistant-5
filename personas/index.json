@@ -131,6 +131,43 @@
                                                                  "concerned":  "concerned.jpg",
                                                                  "thinking":  "thinking.jpg"
                                                              }
+                                            },
+                                            {
+                                                "name":  "Samson",
+                                                "dir":  "Biblical/Samson",
+                                                "persona":  "persona.md",
+                                                "settings":  null,
+                                                "thumb":  "neutral.jpg",
+                                                "emotions":  {
+                                                                 "neutral":  "neutral.jpg",
+                                                                 "happy":  "happy.jpg",
+                                                                 "excited":  "excited.jpg",
+                                                                 "empathetic":  "empathetic.jpg",
+                                                                 "confused":  "confused.jpg",
+                                                                 "concerned":  "concerned.jpg",
+                                                                 "thinking":  "thinking.jpg"
+                                                             }
+                                            }
+                                        ]
+                       },
+                       {
+                           "name":  "Functional",
+                           "personas":  [
+                                            {
+                                                "name":  "ESP32 (demo)",
+                                                "dir":  "Functional/ESP32 (demo)",
+                                                "persona":  "persona.md",
+                                                "settings":  null,
+                                                "thumb":  "neutral.jpg",
+                                                "emotions":  {
+                                                                 "neutral":  "neutral.jpg",
+                                                                 "happy":  "happy.jpg",
+                                                                 "excited":  "excited.jpg",
+                                                                 "empathetic":  "empathetic.jpg",
+                                                                 "confused":  "confused.jpg",
+                                                                 "concerned":  "concerned.jpg",
+                                                                 "thinking":  "thinking.jpg"
+                                                             }
                                             }
                                         ]
                        },
@@ -138,8 +175,57 @@
                            "name":  "Historical",
                            "personas":  [
                                             {
+                                                "name":  "Abraham Lincoln",
+                                                "dir":  "Historical/Abraham Lincoln",
+                                                "persona":  "persona.md",
+                                                "settings":  null,
+                                                "thumb":  "neutral.jpg",
+                                                "emotions":  {
+                                                                 "neutral":  "neutral.jpg",
+                                                                 "happy":  "happy.jpg",
+                                                                 "excited":  "excited.jpg",
+                                                                 "empathetic":  "empathetic.jpg",
+                                                                 "confused":  "confused.jpg",
+                                                                 "concerned":  "concerned.jpg",
+                                                                 "thinking":  "thinking.jpg"
+                                                             }
+                                            },
+                                            {
+                                                "name":  "Alexander Hamilton",
+                                                "dir":  "Historical/Alexander Hamilton",
+                                                "persona":  "persona.md",
+                                                "settings":  null,
+                                                "thumb":  "neutral.jpg",
+                                                "emotions":  {
+                                                                 "neutral":  "neutral.jpg",
+                                                                 "happy":  "happy.jpg",
+                                                                 "excited":  "excited.jpg",
+                                                                 "empathetic":  "empathetic.jpg",
+                                                                 "confused":  "confused.jpg",
+                                                                 "concerned":  "concerned.jpg",
+                                                                 "thinking":  "thinking.jpg"
+                                                             }
+                                            },
+                                            {
                                                 "name":  "David Ben-Gurion",
                                                 "dir":  "Historical/David Ben-Gurion",
+                                                "persona":  "persona.md",
+                                                "settings":  null,
+                                                "thumb":  "neutral.jpg",
+                                                "emotions":  {
+                                                                 "neutral":  "neutral.jpg",
+                                                                 "happy":  "happy.jpg",
+                                                                 "excited":  "excited.jpg",
+                                                                 "empathetic":  "empathetic.jpg",
+                                                                 "confused":  "confused.jpg",
+                                                                 "concerned":  "concerned.jpg",
+                                                                 "thinking":  "thinking.jpg"
+                                                             },
+                                                "hidden":  true
+                                            },
+                                            {
+                                                "name":  "Winston Churchill",
+                                                "dir":  "Historical/Winston Churchill",
                                                 "persona":  "persona.md",
                                                 "settings":  null,
                                                 "thumb":  "neutral.jpg",
@@ -167,7 +253,8 @@
                                                                  "confused":  "confused.jpg",
                                                                  "concerned":  "concerned.jpg",
                                                                  "thinking":  "thinking.jpg"
-                                                             }
+                                                             },
+                                                "hidden":  true
                                             }
                                         ]
                        },
@@ -175,8 +262,57 @@
                            "name":  "Philosophy",
                            "personas":  [
                                             {
+                                                "name":  "Daffy Duck",
+                                                "dir":  "Philosophy/Daffy Duck",
+                                                "persona":  "persona.md",
+                                                "settings":  null,
+                                                "thumb":  "neutral.jpg",
+                                                "emotions":  {
+                                                                 "neutral":  "neutral.jpg",
+                                                                 "happy":  "happy.jpg",
+                                                                 "excited":  "excited.jpg",
+                                                                 "empathetic":  "empathetic.jpg",
+                                                                 "confused":  "confused.jpg",
+                                                                 "concerned":  "concerned.jpg",
+                                                                 "thinking":  "thinking.jpg"
+                                                             }
+                                            },
+                                            {
                                                 "name":  "Friedrich Nietzsche",
                                                 "dir":  "Philosophy/Friedrich Nietzsche",
+                                                "persona":  "persona.md",
+                                                "settings":  null,
+                                                "thumb":  "neutral.jpg",
+                                                "emotions":  {
+                                                                 "neutral":  "neutral.jpg",
+                                                                 "happy":  "happy.jpg",
+                                                                 "excited":  "excited.jpg",
+                                                                 "empathetic":  "empathetic.jpg",
+                                                                 "confused":  "confused.jpg",
+                                                                 "concerned":  "concerned.jpg",
+                                                                 "thinking":  "thinking.jpg"
+                                                             }
+                                            },
+                                            {
+                                                "name":  "Martin Buber",
+                                                "dir":  "Philosophy/Martin Buber",
+                                                "persona":  "persona.md",
+                                                "settings":  null,
+                                                "thumb":  "neutral.jpg",
+                                                "emotions":  {
+                                                                 "neutral":  "neutral.jpg",
+                                                                 "happy":  "happy.jpg",
+                                                                 "excited":  "excited.jpg",
+                                                                 "empathetic":  "empathetic.jpg",
+                                                                 "confused":  "confused.jpg",
+                                                                 "concerned":  "concerned.jpg",
+                                                                 "thinking":  "thinking.jpg"
+                                                             },
+                                                "hidden":  true
+                                            },
+                                            {
+                                                "name":  "Yoda",
+                                                "dir":  "Philosophy/Yoda",
                                                 "persona":  "persona.md",
                                                 "settings":  null,
                                                 "thumb":  "neutral.jpg",

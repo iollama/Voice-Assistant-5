@@ -108,6 +108,7 @@ boolean ap_mode = false;
 #define DEFAULT_TEMPERATURE      0.7f
 #define DEFAULT_PERSIST_CONVO    true
 #define DEFAULT_VERBOSE_LOGGING  true
+#define DEFAULT_SHOW_HIDDEN      false
 #define DEFAULT_VOICE            "marin"
 #define DEFAULT_LANGUAGE         "auto"
 
@@ -115,6 +116,7 @@ String g_sys_instruction;
 float  g_temperature;
 bool   g_persist_conversation;
 bool   g_verbose_logging;
+bool   g_show_hidden_personas;   // portal-UI only: reveal "hidden" personas in Browse
 String g_api_key;
 volatile int g_volume = 50;
 String g_voice;
@@ -316,12 +318,18 @@ static char     s_b64_buf[B64_CHUNK_SIZE];
 static char     s_ws_frame[WS_FRAME_SIZE];
 static uint8_t* s_decode_buf = nullptr;  // PSRAM, allocated in setup()
 
-// Inter-Task Communication Flags
-volatile bool cmd_cancel = false;
-volatile bool cmd_commit = false;
-volatile bool ws_response_done = false;
-volatile bool g_volume_persist_pending = false;  // Core 0 sets after tool-call write; Core 1 persists to NVS
-volatile bool g_show_info_screen = false;         // Core 0 sets (tool call); Core 1 renders and clears on PTT
+// ---- Inter-task signal flags (lock-free; single-writer per flag) -----------
+// Each is a one-way volatile signal between the two cores. Direction notation:
+//   1->0 = set on Core 1 (loop/webserver), acted on by Core 0 (protocol_task)
+//   0->1 = set on Core 0, acted on by Core 1
+// Kept as independent globals (not a struct) deliberately: they are unrelated
+// subsystems, cross cores in both directions, and need no atomic group update.
+volatile bool cmd_cancel               = false;  // 1->0  PTT/barge-in: send response.cancel
+volatile bool cmd_commit               = false;  // 1->0  PTT release: commit input audio buffer
+volatile bool ws_response_done         = false;  // 0->1  response.done seen (jitter-buffer flush gate)
+volatile bool g_volume_persist_pending = false;  // 0->1  volume tool-call: Core 1 writes NVS
+volatile bool g_show_info_screen       = false;  // 0->1  info tool-call: Core 1 renders, clears on PTT/5 s
+volatile bool g_reconnect_pending      = false;  // 1->0  persona saved: Core 0 reconnects WS when idle
 
 // Token usage counters (Core 0 writes, Core 1 webserver reads)
 struct TokenUsage {

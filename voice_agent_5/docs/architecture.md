@@ -495,9 +495,9 @@ Frames are raw RGB565 little-endian binary files, 45,000 bytes each (150 × 150 
 
 | Directory | Contents | Writable from portal? |
 |---|---|---|
-| `/default/<emotion>_<n>.bin` | Shipped defaults (7 emotions × 8 frames = 56 files, ~2.5 MB) | No — anti-brick guarantee |
+| `/default/<emotion>_<n>.bin` | Shipped defaults (7 emotions × 8 frames = 56 files, ~2.5 MB) | Only via `POST /api/default-emoji/<emotion>` (Admin-Zone web provisioning — see below) |
 | `/custom/<emotion>_<n>.bin` | User overrides written by the captive portal. Variable frame count per emotion (1..8). Whole set is committed atomically. | Yes |
-| `/custom_stage/` | In-flight upload buffer. Files are streamed here during a `POST /api/emoji/<emotion>` and renamed into `/custom/` only after the upload validates. Swept on boot in case a prior upload died mid-stream. | Internal |
+| `/custom_stage/`, `/default_stage/` | In-flight upload buffers. Frames are streamed here during a `POST /api/emoji/<emotion>` (→ `/custom_stage/`) or `POST /api/default-emoji/<emotion>` (→ `/default_stage/`) and renamed into the target dir only after the upload validates. Swept on boot in case a prior upload died mid-stream. | Internal |
 
 **Per-emotion frame count.** Each emotion can have 1–8 frames. `g_frame_counts[EMOTION_COUNT]` (in `voice_agent_5.ino`) is populated at boot by `emoji_rescan_frame_counts()` and refreshed after every Replace / Reset. The animation loop uses `g_frame_counts[g_loaded_emotion]` as the modulo for `g_anim_frame`. Static images (PNG/JPG, or single-frame GIF) arrive as `count = 1` and animate naturally as a no-op (`anim_frame % 1 == 0`).
 
@@ -517,6 +517,9 @@ Customization happens in the user's browser. The device serves a captive-portal 
 | POST | `/api/emoji/<emotion>` | Multipart upload, body is N × 45000 bytes (N in 1..8); streamed to `/custom_stage/`, atomic-renamed into `/custom/` on success |
 | POST | `/api/emoji/<emotion>/reset` | Delete one emotion's `/custom/` files |
 | POST | `/api/emoji/reset-all` | Delete every `/custom/` file |
+| POST | `/api/default-emoji/<emotion>` | **Web provisioning** of the read-only `/default/` set. Same multipart body + staged-atomic path as `/api/emoji/<emotion>`, but streamed to `/default_stage/` and renamed into `/default/`. Sole sanctioned runtime writer of `/default/` — see invariants. |
+
+**Provision default persona (Admin Zone).** For a board flashed with firmware but no LittleFS data image, `/default/` is empty. The Admin-Zone "Provision default persona" action (`VA.provisionDefaultPersona` in `portal_js.h`) downloads the canonical default persona from the public repo's `voice_agent_5/feelings/` folder — the 7 `<emotion>.gif` files plus `persona.md` (default prompt) and `settings.json` (voice/language) — decodes the GIFs in the browser, runs a storage preflight against `/api/config`'s `fsFree`, then writes the active agent config (`/saveAgent`, `/saveVolume`) and the `/default/` emoji set (`/api/default-emoji/<emotion>`). It reuses the same generalized upload handler as `/custom/` (the route prefix selects the target dirs). The default persona is *not* in the Browse catalog; `feelings/` is both this provisioning source and the input to the offline `convert_gifs.py` data-image build.
 
 All write endpoints (POST) return **HTTP 409** when `g_state ∈ {RECORDING, THINKING, SPEAKING}`. `server.handleClient()` runs on Core 1 alongside I2S; rejecting uploads during a turn keeps the audio path uncontested. A single-flight `g_emoji_upload_active` flag also rejects a second upload that overlaps the first (the multipart upload spans many `handleClient()` calls).
 

@@ -233,6 +233,7 @@ void manage_websockets() {
     }
     CPRINTLN("WS Connected!");
     setAssistantState(STATE_READY_FOR_INPUT);
+    g_reconnect_pending = false;  // clear any flag set during the reconnect window
 
     CPRINTLN("WS: Sending session.update...");
     CPRINTF("WS: System prompt: %s\n", g_sys_instruction.c_str());
@@ -244,6 +245,16 @@ void manage_websockets() {
         handleBargein(wsClient);
         streamMicAudio(wsClient);
         handleCommit(wsClient);
+        if (g_reconnect_pending) {
+            AssistantState s = (AssistantState)g_state;
+            if (s != STATE_RECORDING && s != STATE_THINKING && s != STATE_SPEAKING) {
+                g_reconnect_pending = false;
+                CPRINTLN("WS: persona changed, reconnecting to apply...");
+                wsClient.close();   // clean close; loop condition (wsClient.available()) then exits
+                break;
+            }
+            // else: a turn is in progress — leave the flag set and re-check next iteration
+        }
         vTaskDelay(pdMS_TO_TICKS(5));
     }
 

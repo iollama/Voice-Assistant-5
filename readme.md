@@ -49,6 +49,18 @@ The assistant can also call **OpenAI function tools** during a response — curr
 | Breadboard | 400 Tie Points |You'll only need one power rail | [Ali](https://s.click.aliexpress.com/e/_c3MZmHuT), [Amazon](https://amzn.to/4w8xcZr) |
 | Screws | M2 and M3 Self-Tapping Screws | I recommend a full kit | [Ali](https://s.click.aliexpress.com/e/_c3LsKZUF), [Amazon](https://s.click.aliexpress.com/e/_c3LsKZUF) |
 
+## Custom PCB (Optional)
+
+Don't want to breadboard it? [`pcb/`](pcb/) has a custom 2-layer breakout PCB that wires up the same components fixed pin-for-pin (matching the tables below) and adds a solder-in expansion header for spare GPIOs. This is the exact board design that was ordered, assembled, and is running the unit here at VA5 HQ — not an unverified first spin.
+
+What's in `pcb/`:
+- **`va5pcb.kicad_pcb` + `va5pcb.kicad_pro`** -- the KiCad board project. Open it in [KiCad](https://www.kicad.org/) (8.0+) to inspect footprint placement, silkscreen, or the routed copper before ordering.
+- **`fab/`** -- bare-board gerbers + Excellon drill (`*.gbr`, `*.drl`, `.gbrjob`), already exported and ready to hand to a fab house (JLCPCB, PCBWay, etc.) as-is. Standard 2-layer board, no unusual stackup.
+
+The board was scripted-routed then hand-finished in KiCad (a couple of stragglers a headless autorouter leaves behind); run your own DRC pass in KiCad if you want to double-check before ordering. The parametric generator that produced this board (component placement, net list, silkscreen) isn't part of this release -- `pcb/` ships the finished design, not the pipeline that built it.
+
+Populate it with the same parts as the [Hardware Components](#hardware-components) table above (skip the breadboard and jumper wires -- solder straight onto the board footprints instead). The PCM5102A headphone DAC is optional, same as the breadboard build; if you install it, use the **PCB build** parts (`ring_pcb.stl`, `top_pcb.stl`, `bottom_pcb.stl`) from [3D Printed Enclosure](#3d-printed-enclosure) below, which carry a matching 3.5 mm jack hole in the ring. The board's spare-GPIO header is documented in [Expansion Header (PCB build only)](#expansion-header-pcb-build-only) below.
+
 ## Pin Assignments
 
 ### Microphone -- INMP441
@@ -125,16 +137,17 @@ The portal *Audio Output* selector (below *Volume*) picks Speaker (MAX98357A) or
 
 ### Expansion Header (PCB build only)
 
-The PCB build exposes every ESP32-S3 GPIO that isn't already driven by a peripheral, plus power rails, on two parallel rows of 2.54 mm through-hole pads in the lower band of the board. Solder a male or female header strip if you want one — the pads are unpopulated by default so you can pick whichever fits your add-on.
+The PCB build exposes every ESP32-S3 GPIO that isn't already driven by a peripheral, plus power rails, on unpopulated 2.54 mm through-hole pads. Solder a male or female header strip if you want one — pick whichever fits your add-on. Most pads sit in the lower band of the board; four GPIOs are on a small **screen-side** header in the gap between the ESP and the display.
 
-| Row | Pads | Silkscreen labels (left → right) |
+| Header | Pads | Silkscreen labels |
 |---|---|---|
-| Data (17) | GPIO pins | `0* 3* 8 9 10 11 12 13 14 15 16 18 19 20 45* 46* 48` |
-| Power (11) | 3.3 V / GND / 5 V | `3V 3V 3V G G G G G 5V 5V 5V` |
+| Data — bottom (J9) | 8 GPIO | `9 48 10 11 12 13 14 19` |
+| Data — screen-side (J13) | 4 GPIO | `15 16 18 8` |
+| Power — bottom (J10) | 7 | `3V 3V G G G 5V 5V` (2×3.3 V / 3×GND / 2×5 V) |
 
 Notes on the data row:
-- `*` marks ESP32-S3 boot-strapping pins (GPIO 0, 3, 45, 46) — they have constraints at boot. Use with care.
-- GPIO 19 / 20 are also the chip's native USB D−/D+. If a future build adds a PCB-mounted USB-C connector, these become unavailable.
+- The four ESP32-S3 boot-strapping pins (GPIO 0, 3, 45, 46) are **not** broken out — they have boot-time constraints, so the header exposes only freely-usable GPIO.
+- GPIO 19 is also the chip's native USB D−. GPIO 20 (the other native USB line, D+) is **not** broken out on this header. If a future build uses the chip's native USB, GPIO 19 becomes unavailable too.
 - GPIO 48 is the on-module RGB status LED. It's brought out for future repurposing, but anything you wire to it will fight the firmware's status indicator until you disable that path in code.
 
 Silkscreen labels are shortened (`3V` rather than `3V3`, `G` rather than `GND`) so each label fits within the 2.54 mm pad pitch.
@@ -245,6 +258,8 @@ Less-common options live behind the **Admin Zone** toggle further down the page:
 
 All settings are saved to NVS and persist across reboots. Use **Restore defaults** (in the Admin Zone) to reset the agent settings.
 
+The Admin Zone also has **Provision default persona**, which pulls the published default persona -- prompt, voice and emoji -- from the project repo and writes it into the device. Use it to set up a board that was flashed with firmware but no emoji image (so the display would otherwise be blank), or to load a newly published default. Unlike **Restore defaults** (which reverts to the compiled-in fallback prompt and on-device emoji), this downloads the current default from the web, so your browser needs internet. It writes the device's read-only default emoji set directly and checks free storage before changing anything.
+
 ## Emoji Display Setup
 
 ### Prerequisites
@@ -351,17 +366,17 @@ These are configurable at runtime via the web portal and persist across reboots:
 
 ## 3D Printed Enclosure
 
-The `box/` directory contains files for a circular 145 mm enclosure designed to hold all components:
+The `box/` directory contains the STL files for a circular 145 mm enclosure designed to hold all components. The geometry is a parametric [build123d](https://github.com/gumyr/build123d) (Python) model; the `.stl` files here are pre-generated from it, so you don't need to render anything yourself.
 
-- **`box/box3.scad`** -- Parametric OpenSCAD source. Customizable dimensions, component positions, and clearances.
-- **`box/box3.stl`** -- Pre-generated STL for the **breadboard/jumper-wire** build. Tray carries printed bosses for the ESP32, display, amp, mic, and button.
-- **`box/box3_pcb.stl`** -- Pre-generated STL for the **PCB** build. Tray is flat (only the speaker bosses remain); the four PCB standoffs hang from the lid so the PCB sits at the same height above the tray as in the breadboard build. Ring includes a 3.5 mm jack passthrough aligned with the optional PCM5102A DAC.
+Each printable part is its own STL. Pick the set that matches your build:
 
-Pick whichever STL matches the build you're doing -- you don't need to render anything yourself. If you do want to re-render: open `box3.scad` in OpenSCAD and toggle the two top-level selectors `BUILD_TYPE` (`HOUSING`, `PCB_EDGE_CUTS`, `PCB_MARKING`) and `TRAY_TYPE` (`3DPRINT`, `PCB`). The `RING`, `TRAY`, `LID`, and `ACCESORIES` flags at the top of the file control which parts render in a `HOUSING` build.
+- **Breadboard / jumper-wire build:** `ring_3dprint.stl`, `top_3dprint.stl` (the top plate carries printed bosses for the ESP32, display, amp, mic, and button), `bottom.stl`.
+- **PCB build:** `ring_pcb.stl` (includes a 3.5 mm jack passthrough aligned with the optional PCM5102A DAC), `top_pcb.stl` (completely flat — the speaker is glued, so there are no bosses), `bottom_pcb.stl` (carries four standoffs that set the PCB height above the bottom plate).
+- **Both builds also use:** `speaker_y_bracket.stl`. The breadboard build additionally uses `cantilever_bracket.stl`, `inline_button_frame.stl`, and `inline_button_bracket.stl`.
 
-The two `box/*.dxf` files (PCB outline and silkscreen reference) are likewise generated from `box3.scad`. They're tracked in git so a PCB designer doesn't need OpenSCAD installed, but the `.scad` is the source of truth — hand-edits to the DXFs are destroyed on the next export. Re-export all four artefacts with `box/housing_export.bat`.
+The parametric build123d source (where dimensions, component positions, and clearances are defined) is maintained in the project's development repo and isn't bundled with this release — just pick the STL set matching your build above and print.
 
-The design uses a tray/ring/lid construction: the tray holds all components (ESP32, display, speaker, mic, amplifier, button) facing down, the ring forms the enclosure wall with USB cutout, and the lid closes the back. Parts are secured with M3 screws into printed bosses.
+The design uses a top/ring/bottom construction: the **top** plate holds all components (ESP32, display, speaker, mic, amplifier, button) facing **down** into the body — from outside you see its flat face. It is printed feature-side-up and flipped over at assembly; the model is pre-mirrored so that, once flipped, everything lines up with the PCB below. The ring forms the enclosure wall (USB cutout toward the ESP; on the PCB ring, orient the headphone hole toward the bottom), and the **bottom** plate closes the base. Parts are secured with M3 screws into printed bosses.
 
 ## State Machine / LED Colors
 

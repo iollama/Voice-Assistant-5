@@ -26,6 +26,7 @@ void load_agent_config() {
   g_temperature = preferences.getFloat("temp", DEFAULT_TEMPERATURE);
   g_persist_conversation = preferences.getBool("persist", DEFAULT_PERSIST_CONVO);
   g_verbose_logging = preferences.getBool("verbose", DEFAULT_VERBOSE_LOGGING);
+  g_show_hidden_personas = preferences.getBool("showHidden", DEFAULT_SHOW_HIDDEN);
   g_api_key = preferences.getString("apiKey", "");
   g_volume = preferences.getInt("volume", 50);
   if (g_volume < 0) g_volume = 0;
@@ -116,8 +117,13 @@ void handle_config() {
   json += "],";
   json += "\"persist\":"  + String(g_persist_conversation ? "true" : "false") + ",";
   json += "\"verbose\":"  + String(g_verbose_logging ? "true" : "false") + ",";
+  json += "\"showHidden\":" + String(g_show_hidden_personas ? "true" : "false") + ",";
   json += "\"volume\":"   + String((int)g_volume) + ",";
   json += "\"audioOut\":" + String((int)g_audio_output) + ",";
+  // LittleFS storage budget — the portal's "Provision default persona" preflight checks
+  // the decoded frame total against fsFree before writing anything to /default.
+  json += "\"fsTotal\":" + String((uint32_t)LittleFS.totalBytes()) + ",";
+  json += "\"fsFree\":"  + String((uint32_t)(LittleFS.totalBytes() - LittleFS.usedBytes())) + ",";
   json += "\"apiKeySet\":" + String(g_api_key.length() > 0 ? "true" : "false") + ",";
   json += "\"apMode\":"   + String(ap_mode ? "true" : "false") + ",";
   json += "\"ssid\":\""   + json_escape(ap_mode ? WiFi.softAPSSID() : WiFi.SSID()) + "\",";
@@ -189,17 +195,20 @@ void handle_save_agent() {
             submitted_language.c_str());
   }
   preferences.end();
+  g_reconnect_pending = true;  // re-apply persona/voice/language to the live session
   server.sendHeader("Location", "/", true);
   server.send(302, "text/plain", "");
 }
 
-// Admin Behavior card: persist conversation + verbose logging.
+// Admin Behavior card: persist conversation + verbose logging + show-hidden-personas.
 void handle_save_behavior() {
   preferences.begin("agentConfig", false);
   g_persist_conversation = server.hasArg("persist");
   g_verbose_logging = server.hasArg("verbose");
+  g_show_hidden_personas = server.hasArg("showHidden");
   preferences.putBool("persist", g_persist_conversation);
   preferences.putBool("verbose", g_verbose_logging);
+  preferences.putBool("showHidden", g_show_hidden_personas);
   preferences.end();
   server.sendHeader("Location", "/", true);
   server.send(302, "text/plain", "");
@@ -209,6 +218,7 @@ void handle_restore_agent() {
   preferences.clear();
   preferences.end();
   load_agent_config();
+  g_reconnect_pending = true;  // re-apply restored defaults to the live session
   server.sendHeader("Location", "/", true);
   server.send(302, "text/plain", "");
 }
@@ -269,6 +279,11 @@ void handle_save_audio_out() {
 
 static const char* EMOJI_CUSTOM_DIR  = "/custom";
 static const char* EMOJI_STAGE_DIR   = "/custom_stage";
+// Provisioning the read-only /default/ set from the web (Admin Zone "Provision default
+// persona") is the ONE sanctioned runtime writer of /default/ — see pdocs/invariants.md.
+// It reuses the same staged+atomic upload path as /custom/, just with these dirs.
+static const char* EMOJI_DEFAULT_DIR       = "/default";
+static const char* EMOJI_DEFAULT_STAGE_DIR = "/default_stage";
 
 static int emoji_find_emotion_index(const String& name) {
   for (int e = 0; e < EMOTION_COUNT; e++) {
@@ -289,21 +304,17 @@ static const char* emoji_source_dir_for(uint8_t emotion) {
   return LittleFS.exists(path) ? "/custom" : "/default";
 }
 
-static void emoji_delete_custom_files(uint8_t emotion) {
+// Remove every frame file for one emotion from a given directory (custom, default, or a stage).
+static void emoji_delete_set_in(const char* dir, uint8_t emotion) {
   char path[EMOJI_PATH_MAX];
   for (int i = 0; i < EMOJI_NUM_FRAMES; i++) {
-    snprintf(path, sizeof(path), "/custom/%s_%d.bin", EMOTION_NAMES[emotion], i);
+    snprintf(path, sizeof(path), "%s/%s_%d.bin", dir, EMOTION_NAMES[emotion], i);
     LittleFS.remove(path);
   }
 }
 
-static void emoji_cleanup_stage_for(uint8_t emotion) {
-  char path[EMOJI_PATH_MAX];
-  for (int i = 0; i < EMOJI_NUM_FRAMES; i++) {
-    snprintf(path, sizeof(path), "/custom_stage/%s_%d.bin", EMOTION_NAMES[emotion], i);
-    LittleFS.remove(path);
-  }
-}
+static void emoji_delete_custom_files(uint8_t emotion) { emoji_delete_set_in(EMOJI_CUSTOM_DIR, emotion); }
+static void emoji_cleanup_stage_for(uint8_t emotion)   { emoji_delete_set_in(EMOJI_STAGE_DIR, emotion); }
 
 // ---- GET /api/emoji/manifest ----------------------------------------
 // Returns { "<emotion>": {"count": N, "source": "default"|"custom"}, ... }
@@ -368,9 +379,12 @@ void handle_emoji_reset_all() {
   server.send(200, "application/json", "{\"ok\":true}");
 }
 
-// ---- POST /api/emoji/<emotion> --------------------------------------
+// ---- POST /api/emoji/<emotion>  and  POST /api/default-emoji/<emotion> ----
 // Multipart with single file field. Body bytes are N x EMOJI_FRAME_BYTES, N in 1..8.
-// Slices on-the-fly into /custom_stage/<emotion>_<i>.bin during streaming.
+// Slices on-the-fly into <stage_dir>/<emotion>_<i>.bin during streaming, then atomically
+// renames the whole set into <final_dir> on success. The route picks the target dirs:
+//   /api/emoji/...          -> /custom_stage -> /custom   (user override)
+//   /api/default-emoji/...  -> /default_stage -> /default (web provisioning; see invariants)
 struct EmojiUploadState {
   int   emotion;
   File  f;
@@ -380,8 +394,10 @@ struct EmojiUploadState {
   bool  failed;
   int   http_status;
   String error_msg;
+  const char* stage_dir;
+  const char* final_dir;
 };
-static EmojiUploadState g_eu = {-1, File(), 0, 0, 0, false, 200, ""};
+static EmojiUploadState g_eu = {-1, File(), 0, 0, 0, false, 200, "", EMOJI_STAGE_DIR, EMOJI_CUSTOM_DIR};
 
 static void eu_fail(int status, const char* msg) {
   if (g_eu.failed) return;
@@ -401,6 +417,8 @@ void handle_emoji_replace_chunk() {
     g_eu.failed = false;
     g_eu.http_status = 200;
     g_eu.error_msg = "";
+    g_eu.stage_dir = EMOJI_STAGE_DIR;   // safe defaults (used by cleanup if we fail early)
+    g_eu.final_dir = EMOJI_CUSTOM_DIR;
     if (g_eu.f) g_eu.f.close();
 
     if (g_emoji_upload_active) {
@@ -414,9 +432,19 @@ void handle_emoji_replace_chunk() {
       return;
     }
 
+    // Pick the target overlay from the route prefix. /default/ is the sanctioned
+    // web-provisioning path (Admin Zone); everything else is the user /custom/ override.
     String uri = server.uri();
-    if (!uri.startsWith("/api/emoji/")) { eu_fail(404, "Bad path"); return; }
-    String name = uri.substring(11);
+    String name;
+    if (uri.startsWith("/api/default-emoji/")) {
+      g_eu.stage_dir = EMOJI_DEFAULT_STAGE_DIR;
+      g_eu.final_dir = EMOJI_DEFAULT_DIR;
+      name = uri.substring(19);
+    } else if (uri.startsWith("/api/emoji/")) {
+      g_eu.stage_dir = EMOJI_STAGE_DIR;
+      g_eu.final_dir = EMOJI_CUSTOM_DIR;
+      name = uri.substring(11);
+    } else { eu_fail(404, "Bad path"); return; }
     int e = emoji_find_emotion_index(name);
     if (e < 0) { eu_fail(404, "Unknown emotion"); return; }
     g_eu.emotion = e;
@@ -427,10 +455,10 @@ void handle_emoji_replace_chunk() {
       return;
     }
 
-    LittleFS.mkdir(EMOJI_STAGE_DIR);
+    LittleFS.mkdir(g_eu.stage_dir);
 
     char path[EMOJI_PATH_MAX];
-    snprintf(path, sizeof(path), "/custom_stage/%s_0.bin", EMOTION_NAMES[e]);
+    snprintf(path, sizeof(path), "%s/%s_0.bin", g_eu.stage_dir, EMOTION_NAMES[e]);
     g_eu.f = LittleFS.open(path, "w");
     if (!g_eu.f) { eu_fail(500, "Open staging failed"); return; }
 
@@ -445,8 +473,8 @@ void handle_emoji_replace_chunk() {
         g_eu.frame_bytes = 0;
         if (g_eu.frame_idx >= EMOJI_NUM_FRAMES) { eu_fail(400, "Too many frames"); return; }
         char path[EMOJI_PATH_MAX];
-        snprintf(path, sizeof(path), "/custom_stage/%s_%d.bin",
-                 EMOTION_NAMES[g_eu.emotion], g_eu.frame_idx);
+        snprintf(path, sizeof(path), "%s/%s_%d.bin",
+                 g_eu.stage_dir, EMOTION_NAMES[g_eu.emotion], g_eu.frame_idx);
         g_eu.f = LittleFS.open(path, "w");
         if (!g_eu.f) { eu_fail(500, "Open staging failed"); return; }
       }
@@ -476,7 +504,7 @@ void handle_emoji_replace_done() {
   }
 
   if (g_eu.failed) {
-    if (g_eu.emotion >= 0) emoji_cleanup_stage_for((uint8_t)g_eu.emotion);
+    if (g_eu.emotion >= 0) emoji_delete_set_in(g_eu.stage_dir, (uint8_t)g_eu.emotion);
     server.send(g_eu.http_status,
                 "text/plain",
                 g_eu.error_msg.length() ? g_eu.error_msg : String("Upload failed"));
@@ -485,34 +513,34 @@ void handle_emoji_replace_done() {
   }
 
   if (g_eu.total_bytes == 0 || (g_eu.total_bytes % EMOJI_FRAME_BYTES) != 0) {
-    emoji_cleanup_stage_for((uint8_t)g_eu.emotion);
+    emoji_delete_set_in(g_eu.stage_dir, (uint8_t)g_eu.emotion);
     server.send(400, "text/plain", "Upload size must be a multiple of 45000 bytes");
     g_emoji_upload_active = false;
     return;
   }
   int new_count = g_eu.total_bytes / EMOJI_FRAME_BYTES;
   if (new_count < 1 || new_count > EMOJI_NUM_FRAMES) {
-    emoji_cleanup_stage_for((uint8_t)g_eu.emotion);
+    emoji_delete_set_in(g_eu.stage_dir, (uint8_t)g_eu.emotion);
     server.send(400, "text/plain", "Bad frame count");
     g_emoji_upload_active = false;
     return;
   }
 
-  LittleFS.mkdir(EMOJI_CUSTOM_DIR);
-  emoji_delete_custom_files((uint8_t)g_eu.emotion);
+  LittleFS.mkdir(g_eu.final_dir);
+  emoji_delete_set_in(g_eu.final_dir, (uint8_t)g_eu.emotion);
 
   char src[EMOJI_PATH_MAX], dst[EMOJI_PATH_MAX];
   const char* name = EMOTION_NAMES[g_eu.emotion];
   for (int i = 0; i < new_count; i++) {
-    snprintf(src, sizeof(src), "/custom_stage/%s_%d.bin", name, i);
-    snprintf(dst, sizeof(dst), "/custom/%s_%d.bin",       name, i);
+    snprintf(src, sizeof(src), "%s/%s_%d.bin", g_eu.stage_dir, name, i);
+    snprintf(dst, sizeof(dst), "%s/%s_%d.bin", g_eu.final_dir, name, i);
     if (!LittleFS.rename(src, dst)) {
       CPRINTF("Emoji commit: rename %s -> %s failed\n", src, dst);
     }
   }
   // remove any leftover staging files for higher indices (shouldn't exist but be safe)
   for (int i = new_count; i < EMOJI_NUM_FRAMES; i++) {
-    snprintf(src, sizeof(src), "/custom_stage/%s_%d.bin", name, i);
+    snprintf(src, sizeof(src), "%s/%s_%d.bin", g_eu.stage_dir, name, i);
     LittleFS.remove(src);
   }
 
@@ -587,10 +615,15 @@ void setup_web_server() {
 
 #if USE_DISPLAY
   server.on("/emojis", HTTP_GET, handle_emojis_page);
-  // Register POST /api/emoji/<emotion> for each emotion (needs upload callback)
+  // Register the per-emotion emoji upload routes (need an upload callback). The same
+  // handlers serve both overlays; the route prefix selects /custom/ vs /default/.
+  //   /api/emoji/<emotion>         -> user override (/custom)
+  //   /api/default-emoji/<emotion> -> web provisioning of the read-only /default set
   for (int e = 0; e < EMOTION_COUNT; e++) {
-    String path = String("/api/emoji/") + EMOTION_NAMES[e];
-    server.on(path, HTTP_POST, handle_emoji_replace_done, handle_emoji_replace_chunk);
+    String custom_path  = String("/api/emoji/") + EMOTION_NAMES[e];
+    String default_path = String("/api/default-emoji/") + EMOTION_NAMES[e];
+    server.on(custom_path,  HTTP_POST, handle_emoji_replace_done, handle_emoji_replace_chunk);
+    server.on(default_path, HTTP_POST, handle_emoji_replace_done, handle_emoji_replace_chunk);
   }
 #endif
 

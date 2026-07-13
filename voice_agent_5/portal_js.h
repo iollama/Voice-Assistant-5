@@ -37,6 +37,11 @@
   const REPO   = "iollama/Voice-Assistant-5";   // owner/repo
   const BRANCH = "main";                          // branch or tag
   const REPO_BASE = "https://raw.githubusercontent.com/" + REPO + "/" + BRANCH + "/personas/";
+  // The canonical default persona ("Provision default persona", Admin Zone) lives in
+  // voice_agent_5/feelings/ (the 7 <emotion>.gif files + persona.md + settings.json) and
+  // ships to the public repo as part of voice_agent_5/. It is NOT in the Browse catalog;
+  // Provision fetches it from this fixed location, not personas/index.json.
+  const DEFAULT_PERSONA_BASE = "https://raw.githubusercontent.com/" + REPO + "/" + BRANCH + "/voice_agent_5/feelings/";
 
   function rgba_to_rgb565_le(rgba){
     const out = new Uint8Array(FRAME_BYTES);
@@ -144,12 +149,15 @@
     return [rgba_to_rgb565_le(ctx.getImageData(0,0,FRAME_PX,FRAME_PX).data)];
   }
 
-  async function uploadFrames(emotion, frames){
+  // opts.target === 'default' writes the read-only /default set (web provisioning of the
+  // default persona, Admin Zone); anything else writes the user /custom override.
+  async function uploadFrames(emotion, frames, opts){
+    const ep = (opts && opts.target === 'default') ? '/api/default-emoji/' : '/api/emoji/';
     const body = new Uint8Array(frames.length * FRAME_BYTES);
     for (let i=0; i<frames.length; i++) body.set(frames[i], i*FRAME_BYTES);
     const fd = new FormData();
     fd.append('frames', new Blob([body], {type:'application/octet-stream'}), 'frames.bin');
-    const r = await fetch('/api/emoji/'+emotion, {method:'POST', body:fd});
+    const r = await fetch(ep+emotion, {method:'POST', body:fd});
     if (!r.ok){
       const t = await r.text();
       throw new Error('Upload failed: ' + r.status + ' ' + t);
@@ -417,12 +425,90 @@
     return await applyProfile(memFiles(map), status);
   }
 
+  // ---- Admin Zone: provision the canonical default persona from the repo ----------
+  // The default persona is published to voice_agent_5/feelings/ in the public repo
+  // (<emotion>.gif + persona.md + settings.json) — see DEFAULT_PERSONA_BASE. Downloads it,
+  // decodes every emotion GIF once, runs a storage preflight, then (if it fits) writes the
+  // active agent config + the read-only /default emoji set. Browser-mediated: the device
+  // never reaches GitHub. statusCb(msg, kind) drives the live progress UI.
+  async function provisionDefaultPersona(statusCb){
+    const status = statusCb || function(){};
+    const HEADROOM = 65536;   // net FS slack beyond the frames we write (firmware guards the per-emotion transient)
+
+    let cfg = {};
+    try { cfg = await (await fetch('/api/config', {cache:'no-store'})).json(); }
+    catch(e){ throw new Error('Could not read device config: ' + e.message); }
+
+    async function grab(file){
+      let r;
+      try { r = await fetch(DEFAULT_PERSONA_BASE + file, {cache:'no-store'}); }
+      catch(e){ throw new Error("Couldn't reach the default persona (offline, or CORS blocked). The browser needs internet."); }
+      if (!r.ok) throw new Error('fetch ' + file + ' -> HTTP ' + r.status);
+      return r.blob();
+    }
+
+    // persona.md (required) + settings.json (optional)
+    status('Downloading default prompt...', 'info');
+    const personaText = await (await grab('persona.md')).text();
+    if (personaText.length > PERSONA_MAX) throw new Error('Default prompt is too long (>'+PERSONA_MAX+' chars).');
+    let settings = null;
+    try { settings = JSON.parse(await (await grab('settings.json')).text()); } catch(e){ settings = null; }
+
+    // Download + decode every emotion GIF ONCE; keep the frames for upload. A missing
+    // emotion is skipped (reported), not fatal.
+    const framesByEmotion = {};
+    const skipped = [];
+    let totalBytes = 0;
+    for (const e of ALL_EMOTIONS){
+      status('Downloading & decoding ' + e + '...', 'info');
+      try {
+        const blob = await grab(e + '.gif');
+        const frames = await decodeFile(new File([blob], e + '.gif'));
+        framesByEmotion[e] = frames;
+        totalBytes += frames.length * FRAME_BYTES;
+      } catch(err){ skipped.push(e + ' (' + err.message + ')'); }
+    }
+    const emoList = Object.keys(framesByEmotion);
+    if (emoList.length === 0) throw new Error('Could not download any default emotion images.');
+
+    // ---- storage preflight: refuse BEFORE writing anything if it won't fit ----
+    if (typeof cfg.fsFree === 'number' && (totalBytes + HEADROOM) > cfg.fsFree){
+      throw new Error('Not enough storage: the default persona needs ~' + Math.round(totalBytes/1024) +
+                      ' KB but only ' + Math.round(cfg.fsFree/1024) + ' KB is free. Nothing was changed.');
+    }
+
+    // ---- apply prompt + voice + language (overwrite — this is a reset to default) ----
+    const voiceOk = settings && typeof settings.voice === 'string' && (cfg.voices||[]).some(v=>v.id===settings.voice);
+    const langOk  = settings && typeof settings.language === 'string' && (cfg.languages||[]).some(l=>l.id===settings.language);
+    const voice    = voiceOk ? settings.voice    : (cfg.voice || '');
+    const language = langOk  ? settings.language : (cfg.language || '');
+    status('Applying default prompt & voice...', 'info');
+    await postForm('/saveAgent', {sysPrompt: personaText, voice: voice, language: language});
+    if (settings && 'volume' in settings){
+      const v = parseInt(settings.volume, 10);
+      if (Number.isFinite(v)){ try { await postForm('/saveVolume', {volume: String(Math.max(0,Math.min(100,v)))}); } catch(e){} }
+    }
+
+    // ---- write the read-only /default emoji set, one emotion at a time ----
+    const applied = [];
+    let n = 0;
+    for (const e of emoList){
+      n++;
+      try {
+        status('Writing default emoji ' + e + ' (' + n + '/' + emoList.length + ')...', 'info');
+        await uploadFrames(e, framesByEmotion[e], {target:'default'});
+        applied.push(e);
+      } catch(err){ skipped.push(e + ' (' + err.message + ')'); }
+    }
+    return {applied, skipped};
+  }
+
   Object.assign(VA, {
     ALL_EMOTIONS, FRAME_PX, FRAME_BYTES, MAX_FRAMES, PERSONA_MAX, SRC_EXTS, REPO, BRANCH, REPO_BASE,
     rgba_to_rgb565_le, rgb565_le_to_rgba, drawCover, decodeFile, uploadFrames,
     addEmojiToZip, zipHasEmoji, applyEmoji, applyEmojiFromZip,
     buildProfileZip, applyProfile, applyProfileFromZip, memFiles,
-    downloadBlob, fetchRepoIndex, repoFileUrl, importRepoPersona
+    downloadBlob, fetchRepoIndex, repoFileUrl, importRepoPersona, provisionDefaultPersona
   });
 })();
 </script>)JS"

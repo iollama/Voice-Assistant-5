@@ -175,11 +175,19 @@ textarea{min-height:120px;resize:vertical}
       <h4>&#9881;&#65039; Behavior</h4>
       <div class="row"><input type="checkbox" id="persist" name="persist" value="true"><label for="persist">Persist conversation across turns</label></div>
       <div class="row"><input type="checkbox" id="verbose" name="verbose" value="true"><label for="verbose">Verbose serial logging</label></div>
+      <div class="row"><input type="checkbox" id="showHidden" name="showHidden" value="true"><label for="showHidden">Show hidden personas in Browse</label></div>
       <button type="submit" class="btn go save" disabled>Save behavior &#9656;</button>
     </form>
     <form action="/restoreAgent" method="POST" onsubmit="return confirm('Restore default agent settings (prompt, voice, behavior)?');" style="margin-top:-4px">
       <button type="submit" class="btn ghost sm">Restore defaults</button>
     </form>
+
+    <div class="card" id="provCard" style="display:none">
+      <h4>&#127760; Provision Default Persona</h4>
+      <div class="hint" style="margin-bottom:10px">Pull the published default persona &mdash; prompt, voice &amp; emoji &mdash; from the web and write it into this device. Use it to seed a freshly-flashed board (no emoji yet) or to load a newly published default. Replaces current settings; your browser needs internet.</div>
+      <button type="button" id="provBtn" class="btn ghost sm" style="margin-top:0">&#11015;&#65039; Provision from web</button>
+      <div id="provStatus" style="display:none;margin-top:12px;padding:9px;border:3px solid var(--ink);border-radius:8px;font-size:13px;font-weight:700;box-shadow:3px 3px 0 var(--ink)"></div>
+    </div>
 
     <div class="card">
       <h4>&#128202; Token Usage <span class="hint" style="font-weight:700">(since boot &middot; reload to refresh)</span></h4>
@@ -245,8 +253,8 @@ async function loadConfig(){
   // Audio output
   $(c.audioOut === 1 ? 'ao1' : 'ao0').checked = true;
 
-  // Emoji card (only when the display build is present)
-  if (c.useDisplay) $('emojiCard').style.display = 'flex';
+  // Emoji card + default-persona provisioning (only when the display build is present)
+  if (c.useDisplay){ $('emojiCard').style.display = 'flex'; $('provCard').style.display = ''; }
 
   // Admin: key status + behavior
   $('keyStatus').innerHTML = c.apiKeySet
@@ -254,6 +262,8 @@ async function loadConfig(){
     : '<span style="color:var(--mute)">&#9679; Using compiled default key</span>';
   $('persist').checked = !!c.persist;
   $('verbose').checked = !!c.verbose;
+  $('showHidden').checked = !!c.showHidden;
+  ioShowHidden = !!c.showHidden;
 
   // Token usage
   const t = c.tokens || {};
@@ -298,18 +308,22 @@ async function ioApply(zip){
 }
 // ---- Browse: curated persona catalog from the repo ----
 let ioCatalogLoaded = false;
+let ioShowHidden = false;   // admin "Show hidden personas" toggle (from /api/config)
 function ioRenderCatalog(index){
   const root = $('ioRepoCatalog');
   root.innerHTML = '';
   const cats = (index && index.categories) || [];
   if (!cats.length){ root.innerHTML = '<div class="hint">No personas found in the gallery.</div>'; return; }
   cats.forEach(cat=>{
+    // Hide personas flagged "hidden" unless the admin opted in.
+    const people = (cat.personas || []).filter(p => ioShowHidden || !p.hidden);
+    if (!people.length) return;   // skip a category emptied by filtering
     const sec = document.createElement('div'); sec.className='ioCat';
     const hdr = document.createElement('button'); hdr.type='button'; hdr.className='ioCatHdr';
-    const n = (cat.personas || []).length;
+    const n = people.length;
     hdr.innerHTML = '<span class="ioCaret">&#9656;</span>' + esc(cat.name || 'Personas') + '<span class="ioCatN">' + n + '</span>';
     const grid = document.createElement('div'); grid.className='ioGrid'; grid.style.display='none';
-    for (const p of (cat.personas || [])){
+    for (const p of people){
       const tile = document.createElement('div'); tile.className='ioTile'; tile.title = 'Import ' + p.name;
       const src = p.thumb ? VA.repoFileUrl(p.dir, p.thumb) : '';
       tile.innerHTML = (src ? '<img loading="lazy" alt="" src="' + src + '">' : '') + '<div class="nm">' + esc(p.name) + '</div>';
@@ -346,6 +360,28 @@ $('ioBrowse').addEventListener('click', ()=>{
   const show = row.style.display === 'none';
   row.style.display = show ? 'block' : 'none';
   if (show && !ioCatalogLoaded) ioLoadCatalog();
+});
+
+// ---- Admin: provision the canonical default persona from the repo ----
+function provStatus(msg, kind){
+  const s = $('provStatus');
+  s.textContent = msg;
+  s.style.display = msg ? 'block' : 'none';
+  s.style.background = kind==='err' ? 'var(--red)' : kind==='ok' ? 'var(--green)' : 'var(--yellow)';
+  s.style.color = kind==='err' ? '#fff' : 'var(--ink)';
+}
+$('provBtn').addEventListener('click', async ()=>{
+  if (!confirm('Overwrite this device’s default persona (prompt, voice & emoji) from the web? Current settings will be replaced.')) return;
+  const btn = $('provBtn');
+  btn.disabled = true;
+  try{
+    const res = await VA.provisionDefaultPersona(provStatus);
+    let msg = res.applied.length ? ('Provisioned: ' + res.applied.join(', ')) : 'No emoji written';
+    if (res.skipped.length) msg += '  |  Skipped: ' + res.skipped.join('; ');
+    provStatus(msg, res.skipped.length ? 'info' : 'ok');
+    setTimeout(loadConfig, 500);   // refresh shown prompt/voice/volume
+  } catch(e){ provStatus('Provision failed: ' + e.message, 'err'); }
+  finally { btn.disabled = false; }
 });
 
 $('ioExport').addEventListener('click', ioExport);
