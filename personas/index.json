@@ -329,6 +329,123 @@
                                         ]
                        },
                        {
+                           "name":  "Science",
+                           "personas":  [
+                                            {
+                                                "name":  "Ada Lovelace",
+                                                "dir":  "Science/Ada Lovelace",
+                                                "persona":  "persona.md",
+                                                "settings":  null,
+                                                "thumb":  "neutral.jpg",
+                                                "emotions":  {
+                                                                 "neutral":  "neutral.jpg",
+                                                                 "happy":  "happy.jpg",
+                                                                 "excited":  "excited.jpg",
+                                                                 "empathetic":  "empathetic.jpg",
+                                                                 "confused":  "confused.jpg",
+                                                                 "concerned":  "concerned.jpg",
+                                                                 "thinking":  "thinking.jpg"
+                                                             }
+                                            },
+                                            {
+                                                "name":  "Albert Einstein",
+                                                "dir":  "Science/Albert Einstein",
+                                                "persona":  "persona.md",
+                                                "settings":  null,
+                                                "thumb":  "neutral.jpg",
+                                                "emotions":  {
+                                                                 "neutral":  "neutral.jpg",
+                                                                 "happy":  "happy.jpg",
+                                                                 "excited":  "excited.jpg",
+                                                                 "empathetic":  "empathetic.jpg",
+                                                                 "confused":  "confused.jpg",
+                                                                 "concerned":  "concerned.jpg",
+                                                                 "thinking":  "thinking.jpg"
+                                                             }
+                                            },
+                                            {
+                                                "name":  "Claudius Ptolemy",
+                                                "dir":  "Science/Claudius Ptolemy",
+                                                "persona":  "persona.md",
+                                                "settings":  null,
+                                                "thumb":  "neutral.jpg",
+                                                "emotions":  {
+                                                                 "neutral":  "neutral.jpg",
+                                                                 "happy":  "happy.jpg",
+                                                                 "excited":  "excited.jpg",
+                                                                 "empathetic":  "empathetic.jpg",
+                                                                 "confused":  "confused.jpg",
+                                                                 "concerned":  "concerned.jpg",
+                                                                 "thinking":  "thinking.jpg"
+                                                             }
+                                            },
+                                            {
+                                                "name":  "J. Robert Oppenheimer",
+                                                "dir":  "Science/J. Robert Oppenheimer",
+                                                "persona":  "persona.md",
+                                                "settings":  null,
+                                                "thumb":  "neutral.jpg",
+                                                "emotions":  {
+                                                                 "neutral":  "neutral.jpg",
+                                                                 "happy":  "happy.jpg",
+                                                                 "excited":  "excited.jpg",
+                                                                 "empathetic":  "empathetic.jpg",
+                                                                 "confused":  "confused.jpg",
+                                                                 "concerned":  "concerned.jpg",
+                                                                 "thinking":  "thinking.jpg"
+                                                             }
+                                            },
+                                            {
+                                                "name":  "Marie Curie",
+                                                "dir":  "Science/Marie Curie",
+                                                "persona":  "persona.md",
+                                                "settings":  null,
+                                                "thumb":  "neutral.jpg",
+                                                "emotions":  {
+                                                                 "neutral":  "neutral.jpg",
+                                                                 "happy":  "happy.jpg",
+                                                                 "excited":  "excited.jpg",
+                                                                 "empathetic":  "empathetic.jpg",
+                                                                 "confused":  "confused.jpg",
+                                                                 "concerned":  "concerned.jpg",
+                                                                 "thinking":  "thinking.jpg"
+                                                             }
+                                            },
+                                            {
+                                                "name":  "Nicolaus Copernicus",
+                                                "dir":  "Science/Nicolaus Copernicus",
+                                                "persona":  "persona.md",
+                                                "settings":  null,
+                                                "thumb":  "neutral.jpg",
+                                                "emotions":  {
+                                                                 "neutral":  "neutral.jpg",
+                                                                 "happy":  "happy.jpg",
+                                                                 "excited":  "excited.jpg",
+                                                                 "empathetic":  "empathetic.jpg",
+                                                                 "confused":  "confused.jpg",
+                                                                 "concerned":  "concerned.jpg",
+                                                                 "thinking":  "thinking.jpg"
+                                                             }
+                                            },
+                                            {
+                                                "name":  "Sir Isaac Newton",
+                                                "dir":  "Science/Sir Isaac Newton",
+                                                "persona":  "persona.md",
+                                                "settings":  null,
+                                                "thumb":  "neutral.jpg",
+                                                "emotions":  {
+                                                                 "neutral":  "neutral.jpg",
+                                                                 "happy":  "happy.jpg",
+                                                                 "excited":  "excited.jpg",
+                                                                 "empathetic":  "empathetic.jpg",
+                                                                 "confused":  "confused.jpg",
+                                                                 "concerned":  "concerned.jpg",
+                                                                 "thinking":  "thinking.jpg"
+                                                             }
+                                            }
+                                        ]
+                       },
+                       {
                            "name":  "Theological",
                            "personas":  [
                                             {

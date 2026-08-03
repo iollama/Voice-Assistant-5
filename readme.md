@@ -1,8 +1,21 @@
-﻿# Voice Assistant 5 -- ESP32-S3 Voice Assistant
+﻿# Voice Assistant 5 — STEM Oriented ESP32 Voice Assistant With No Personality
 
-Meet your new desk companion: press the button, ask it anything, and get an instant spoken reply -- with an animated emoji face that grins, frowns, or laughs along with the conversation. It's small, expressive, and entirely yours -- a real voice assistant you built yourself, in a case you 3D-printed, powered by your own OpenAI account.
+Press the button, talk, let go — and get an instant spoken reply, with an animated emoji face that grins, frowns and laughs along with the conversation. Less than $20 in parts, a case you print yourself, running on your own OpenAI key.
+
+The part that makes it worth building: **it has no character until you give it one.**
 
 ![Voice Assistant 5](images/va5_lead_image.jpg)
+
+Everything that gives this thing a personality lives behind a web page the device serves. The ~~system~~ persona prompt, one of ten voices, the spoken language, and the face itself:
+drop in a GIF, PNG, JPG or MP4 and it adopts immediately. No recompile, no cable, no SD card, no code. Write Nietzsche. Write Churchill. Write Daffy Duck. Hand it to someone else and let them write over it.
+
+That design came out of a classroom. VA5 is used in schools, where students research a figure, write the persona themselves, load it on, and then have to
+hold a conversation with what they wrote. A thin characterisation falls apart within a minute or two of being interrogated, so they go back and rewrite it.
+Write, test by talking, revise — which is prompt engineering, except nobody has to call it that.
+
+Thirty students cannot each be flashing firmware. That single constraint explains most of the design decisions in this repo: why the whole persona is editable from a phone, and why personas export as a `.zip` so one set of
+devices can cycle between classes.
+
 
 ## Features
 
@@ -48,6 +61,19 @@ The assistant can also call **OpenAI function tools** during a response — curr
 | USB-C Cable | Data + power, Type C to Type A | You should have one at home | [Ali](https://s.click.aliexpress.com/e/_c4mijwjN), [Amazon](https://amzn.to/3QNDeyr) |
 | Breadboard | 400 Tie Points |You'll only need one power rail | [Ali](https://s.click.aliexpress.com/e/_c3MZmHuT), [Amazon](https://amzn.to/4w8xcZr) |
 | Screws | M2 and M3 Self-Tapping Screws | I recommend a full kit | [Ali](https://s.click.aliexpress.com/e/_c3LsKZUF), [Amazon](https://s.click.aliexpress.com/e/_c3LsKZUF) |
+
+
+## Personas
+A persona is a character the device becomes: a system prompt, a voice, a language and an emoji set, bundled together. The settings page has a **Browse** gallery that pulls ready-made ones straight from this repo, and you can export your own as a `.zip` to back up, share, or hand to a class.
+
+Shipped categories include Science (Ada Lovelace, Marie Curie, Sir Isaac Newton), Historical (Abraham Lincoln, Winston Churchill) and Philosophy (Friedrich Nietzsche, Yoda, Daffy Duck) — alongside Biblical, Theological, and a Functional category holding an ESP32 that explains its own hardware.
+
+Writing your own is the interesting part. Vague personas produce vague conversations — the difference between "you are Winston Churchill" and a paragraph on what he knew, how he spoke, what he refused to discuss and where
+he was wrong is immediately audible.
+
+Personas live in [`personas/`](personas). Pull requests welcome.
+
+There is also a persona-creating skill for Google's Antigravity in [`.agents/skills/persona-creator/`](.agents/skills/persona-creator/) — the same workflow the personas above were built with.
 
 ## Custom PCB (Optional)
 
@@ -360,9 +386,11 @@ These are configurable at runtime via the web portal and persist across reboots:
 |---------|---------|-------|-------------|
 | System Prompt | "You are a helpful voice assistant..." | up to 12 KB (12288 chars) | Controls assistant persona |
 | Voice | `marin` | `alloy`, `ash`, `ballad`, `coral`, `echo`, `sage`, `shimmer`, `verse`, `marin`, `cedar` | OpenAI Realtime voice; applies on next session |
+| Language | Automatic | Automatic or one of 13 languages | Forces every reply into the chosen language; Automatic matches whatever you speak. Applies on next session |
 | Persist Conversation | true | boolean | Chain responses via `previous_response_id` |
 | Verbose Logging | true | boolean | Detailed serial debug output |
 | Volume | 50 | 0 - 100 | Speaker volume (PCM sample scaling) |
+| Audio Output | Speaker | Speaker / Headphones | Which output plays (only meaningful with the optional PCM5102A installed) |
 
 ## 3D Printed Enclosure
 
@@ -370,13 +398,13 @@ The `box/` directory contains the STL files for a circular 145 mm enclosure desi
 
 Each printable part is its own STL. Pick the set that matches your build:
 
-- **Breadboard / jumper-wire build:** `ring_3dprint.stl`, `top_3dprint.stl` (the top plate carries printed bosses for the ESP32, display, amp, mic, and button), `bottom.stl`.
+- **Breadboard / jumper-wire build:** `ring_3dprint.stl` (carries the same 3.5 mm jack passthrough as the PCB ring, for the optional PCM5102A), `top_3dprint.stl` (the top plate carries printed bosses for the ESP32, display, amp, mic, and button), `bottom.stl`.
 - **PCB build:** `ring_pcb.stl` (includes a 3.5 mm jack passthrough aligned with the optional PCM5102A DAC), `top_pcb.stl` (completely flat — the speaker is glued, so there are no bosses), `bottom_pcb.stl` (carries four standoffs that set the PCB height above the bottom plate).
 - **Both builds also use:** `speaker_y_bracket.stl`. The breadboard build additionally uses `cantilever_bracket.stl`, `inline_button_frame.stl`, and `inline_button_bracket.stl`.
 
 The parametric build123d source (where dimensions, component positions, and clearances are defined) is maintained in the project's development repo and isn't bundled with this release — just pick the STL set matching your build above and print.
 
-The design uses a top/ring/bottom construction: the **top** plate holds all components (ESP32, display, speaker, mic, amplifier, button) facing **down** into the body — from outside you see its flat face. It is printed feature-side-up and flipped over at assembly; the model is pre-mirrored so that, once flipped, everything lines up with the PCB below. The ring forms the enclosure wall (USB cutout toward the ESP; on the PCB ring, orient the headphone hole toward the bottom), and the **bottom** plate closes the base. Parts are secured with M3 screws into printed bosses.
+The design uses a top/ring/bottom construction: the **top** plate holds all components (ESP32, display, speaker, mic, amplifier, button) facing **down** into the body — from outside you see its flat face. It is printed feature-side-up and flipped over at assembly; the model is pre-mirrored so that, once flipped, everything lines up with the PCB below. The ring forms the enclosure wall (USB cutout toward the ESP; orient the headphone hole toward the bottom), and the **bottom** plate closes the base. Parts are secured with M3 screws into printed bosses.
 
 ## State Machine / LED Colors
 

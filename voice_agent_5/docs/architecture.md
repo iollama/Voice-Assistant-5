@@ -100,7 +100,7 @@ All methods except `isValid` acquire the mutex with `portMAX_DELAY` (blocking). 
 
 ### Why PSRAM
 
-The combined buffer sizes (64 KB + 1,440 KB + 48 KB decode buffer) far exceed available internal SRAM. `ps_malloc()` places them in the 8 MB OPI PSRAM, keeping the internal heap free for the WiFi/TLS stack and ArduinoWebsockets library allocations.
+The combined buffer sizes (96 KB + 1,440 KB + 48 KB decode buffer) far exceed available internal SRAM. `ps_malloc()` places them in the 8 MB OPI PSRAM, keeping the internal heap free for the WiFi/TLS stack and ArduinoWebsockets library allocations.
 
 ### Why Mutex
 
@@ -427,6 +427,8 @@ Configuration is stored in ESP32 NVS (Non-Volatile Storage) using the `Preferenc
 | API key | `apiKey` | falls back to `config.h` |
 | Volume | `volume` | 50 |
 | Voice | `voice` | `marin` (whitelisted to the 10 SDK voices: `alloy`, `ash`, `ballad`, `coral`, `echo`, `sage`, `shimmer`, `verse`, `marin`, `cedar`) |
+| Language | `lang` | `auto` — "Automatic (match the speaker)"; any other id forces that language via an instruction directive (whitelisted to `LANGUAGE_OPTIONS[]`) |
+| Audio output | `audioOut` | Speaker (`AUDIO_OUT_SPEAKER`) — see [Dual-DAC layout](#dual-dac-layout-pcb-builds) |
 | WiFi SSID | `wifi-creds/ssid` | — |
 | WiFi password | `wifi-creds/pass` | — |
 
