@@ -1,3 +1,11 @@
+// Modified 2026-04-02 by Udi Tirosh for the VA5 project.
+// Change: added the missing else { client->setInsecure(); } fallback to the
+//   ESP32 branch of upgradeToSecuredConnection(), mirroring the ESP8266 branch.
+// Upstream: gilmaimon/ArduinoWebsockets v0.5.4 (GPL-3.0)
+//   https://github.com/gilmaimon/ArduinoWebsockets
+// See VENDORED.md alongside this library for the full change inventory, and
+// voice_agent_5/docs/websockets_patches.md for the exact patch.
+
 #include "tiny_websockets/internals/ws_common.hpp"
 #include "tiny_websockets/network/tcp_client.hpp"
 #include "tiny_websockets/message.hpp"

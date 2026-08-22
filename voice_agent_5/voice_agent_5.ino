@@ -10,7 +10,11 @@
   This sketch requires the following libraries. Install via Arduino IDE:
     - "ArduinoJson" by Benoit Blanchon
     - "Adafruit NeoPixel" by Adafruit
-    - "ArduinoWebsockets" by Gil Maimon (v0.5.3 or newer)
+    - "GFX Library for Arduino" by moononournation
+
+  Do NOT install "ArduinoWebsockets" via the Library Manager. A patched copy of
+  v0.5.4 is vendored in src/ and is included by relative path; the stock library
+  fails every WSS connection silently. See src/VENDORED.md.
 
   Pipeline:
     1) Dual-core FreeRTOS architecture.

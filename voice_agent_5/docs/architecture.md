@@ -585,4 +585,4 @@ PSRAM buffers are allocated via `ps_malloc()` to keep the internal heap free for
 
 ## Library Patches
 
-ArduinoWebsockets v0.5.3 is **vendored** into the sketch's `src/` directory with two critical bug fixes applied. See [websockets_patches.md](websockets_patches.md) for the exact code changes, motivation, and upgrade instructions.
+ArduinoWebsockets v0.5.4 is **vendored** into the sketch's `src/` directory with two critical bug fixes applied. See [websockets_patches.md](websockets_patches.md) for the exact code changes, motivation, and upgrade instructions, and [VENDORED.md](../src/VENDORED.md) for the GPL-3.0 attribution and full change inventory.

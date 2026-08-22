@@ -355,9 +355,9 @@ Emoji animations sourced from [Google Fonts Emoji](https://googlefonts.github.io
 
 ## Library Patches
 
-ArduinoWebsockets v0.5.3 has two upstream bugs that prevent WSS connections on ESP32: a missing `setInsecure()` method in `SecuredEsp32TcpClient`, and a missing fallback to insecure mode in the ESP32 branch of `upgradeToSecuredConnection()`. Both cause every secure WebSocket connection to fail silently.
+ArduinoWebsockets v0.5.4 has two upstream bugs that prevent WSS connections on ESP32: a missing `setInsecure()` method in `SecuredEsp32TcpClient`, and a missing fallback to insecure mode in the ESP32 branch of `upgradeToSecuredConnection()`. Both cause every secure WebSocket connection to fail silently. (Both are still present upstream as of v0.5.4.)
 
-The library is vendored in `src/` with fixes already applied -- no manual patching required. For full details, the exact code changes, and instructions for updating to a newer version, see [websockets_patches.md](voice_agent_5/docs/websockets_patches.md).
+The library is vendored in `src/` with fixes already applied -- no manual patching required. For full details, the exact code changes, and instructions for updating to a newer version, see [websockets_patches.md](voice_agent_5/docs/websockets_patches.md). For the licensing side -- upstream version, licence, and the full list of what was modified -- see [VENDORED.md](voice_agent_5/src/VENDORED.md).
 
 ## Tuning Knobs
 
@@ -471,8 +471,15 @@ For detailed technical documentation covering dual-core architecture, ring buffe
 
 ## License
 
-This project is licensed under [CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/) (Creative Commons Attribution-NonCommercial 4.0 International).
+VA5 is licensed under [GPL-3.0](LICENSE) (GNU General Public License, version 3).
 
-You are free to use, modify, and share this project for **non-commercial purposes**, provided you give appropriate attribution.
+You can build these devices, use them, modify them, teach with them, and sell them. None of that needs anyone's permission. If you'd like to talk about a commercial arrangement or a classroom deployment, you're welcome to — hello@oriliventures.com — but it isn't a condition of any of the above.
 
-**For commercial use**, please contact the creator at hello@oriliventures.com to arrange a license.
+The obligation that comes with GPL-3.0 is share-alike: if you hand someone the firmware, or a device running it, modified or not, they're entitled to the source under this same licence.
+
+### Third-party components
+
+- **ArduinoWebsockets** — a *modified* copy of [gilmaimon/ArduinoWebsockets](https://github.com/gilmaimon/ArduinoWebsockets) v0.5.4 is vendored in [voice_agent_5/src/](voice_agent_5/src/). It is GPL-3.0, and that is why this project is GPL-3.0. What was changed and why: [VENDORED.md](voice_agent_5/src/VENDORED.md); the exact patches: [websockets_patches.md](voice_agent_5/docs/websockets_patches.md).
+- **Emoji animations** — from [Google Fonts Emoji](https://googlefonts.github.io/), under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/legalcode).
+- **base64 encoder** — © 2004-2008 René Nyffenegger, zlib-style licence, notice retained in `voice_agent_5/src/tiny_websockets/internals/wscrypto/base64.hpp`.
+- **SHA-1 implementation** — from [983/SHA1](https://github.com/983/SHA1), credit retained in `voice_agent_5/src/tiny_websockets/internals/wscrypto/sha1.hpp`.

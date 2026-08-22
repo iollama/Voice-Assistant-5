@@ -42,4 +42,4 @@ QR rendering uses the `esp_qrcode` API bundled with the espressif32 platform —
 
 | Library | Version | Notes |
 |---------|---------|-------|
-| ArduinoWebsockets | 0.5.3 | Patched copy in [voice_agent_5/src/](voice_agent_5/src/) — do not install via Library Manager or add to `lib_deps`. See [websockets_patches.md](voice_agent_5/docs/websockets_patches.md). |
+| ArduinoWebsockets | 0.5.4 | Patched copy in [voice_agent_5/src/](voice_agent_5/src/) — GPL-3.0, do not install via Library Manager or add to `lib_deps`. See [websockets_patches.md](voice_agent_5/docs/websockets_patches.md) and [VENDORED.md](voice_agent_5/src/VENDORED.md). |

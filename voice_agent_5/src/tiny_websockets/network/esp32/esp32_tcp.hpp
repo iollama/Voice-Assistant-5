@@ -1,6 +1,13 @@
+// Modified 2026-04-02 by Udi Tirosh for the VA5 project.
+// Change: added setInsecure() to SecuredEsp32TcpClient.
+// Upstream: gilmaimon/ArduinoWebsockets v0.5.4 (GPL-3.0)
+//   https://github.com/gilmaimon/ArduinoWebsockets
+// See VENDORED.md alongside this library for the full change inventory, and
+// voice_agent_5/docs/websockets_patches.md for the exact patch.
+
 #pragma once
 
-#ifdef ESP32
+#ifdef ESP32 
 
 #include "../../internals/ws_common.hpp"
 #include "../tcp_client.hpp"

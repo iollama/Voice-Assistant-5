@@ -1,5 +1,8 @@
 # ArduinoWebsockets Library Patches
 
+Upstream baseline: **v0.5.4** ([gilmaimon/ArduinoWebsockets](https://github.com/gilmaimon/ArduinoWebsockets)), GPL-3.0.
+For the licensing side — what was modified and why, in full — see [VENDORED.md](../src/VENDORED.md).
+
 ## How patches are applied — vendored `src/` approach
 
 The patched library source lives inside this sketch at `src/` (e.g. `src/ArduinoWebsockets.h`,
@@ -20,10 +23,17 @@ ArduinoJson and Adafruit NeoPixel are still installed the normal way (Arduino Li
 
 ### What was changed from the upstream library
 
-All internal `#include <tiny_websockets/...>` angle-bracket includes were converted to relative
-`#include "..."` paths so the library is self-contained without needing its `src/` directory on
-the compiler include path.  The non-ESP32 platform directories (ESP8266, Linux, Windows, Teensy41)
-were also removed since this sketch only targets ESP32-S3.
+Beyond the two bug fixes below:
+
+- All internal `#include <tiny_websockets/...>` angle-bracket includes were converted to relative
+  `#include "..."` paths so the library is self-contained without needing its `src/` directory on
+  the compiler include path.
+- The non-ESP32 platform directories (ESP8266, Linux, Windows, Teensy41) were removed since this
+  sketch only targets ESP32-S3.
+- **The platform dispatch in `src/tiny_websockets/internals/ws_common.hpp` was reduced to ESP32
+  only** — its `#ifdef ESP8266` / `#elif defined(ARDUINO_TEENSY41)` branches were deleted. This is
+  not optional cleanup: those branches `#include` headers from the directories removed above, so
+  skipping this step produces a copy that does not compile.
 
 ### Updating the library
 
@@ -34,6 +44,14 @@ If you need to update to a newer version of ArduinoWebsockets:
 3. Re-apply the two bug fixes below.
 4. Convert all `#include <tiny_websockets/...>` to relative `#include "..."` paths (see commit
    history for the full list of changes).
+5. Remove the non-ESP32 platform directories, **and** re-trim the platform dispatch in
+   `ws_common.hpp` to match.
+6. Restore the GPL-3.0 change notices at the top of the three modified files, and update the version
+   recorded in [VENDORED.md](../src/VENDORED.md). Keeping that disclosure accurate is a licence
+   obligation, not bookkeeping.
+
+To confirm you have not missed anything, diff the result against the upstream tag with `#include`
+lines normalised to their basenames — only the three modified files should differ.
 
 ---
 
@@ -90,5 +108,7 @@ fallback to insecure mode was triggered, so WSS always failed silently.
 
 ## Notes
 
-- Tested with ArduinoWebsockets v0.5.3 on ESP32-S3.
-- These are upstream bugs; check whether a newer version has fixed them before re-applying.
+- Tested with ArduinoWebsockets v0.5.4 on ESP32-S3.
+- These are upstream bugs. Both are still present in v0.5.4 and on `master` (last upstream commit
+  June 2024), so a version bump alone will not remove the need for these patches — check, but do not
+  assume.

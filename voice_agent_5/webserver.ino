@@ -280,7 +280,8 @@ void handle_save_audio_out() {
 static const char* EMOJI_CUSTOM_DIR  = "/custom";
 static const char* EMOJI_STAGE_DIR   = "/custom_stage";
 // Provisioning the read-only /default/ set from the web (Admin Zone "Provision default
-// persona") is the ONE sanctioned runtime writer of /default/ — see pdocs/invariants.md.
+// persona") is the ONE sanctioned runtime writer of /default/. Every other emoji write
+// path touches /custom/ only -- that is what makes Reset un-brickable.
 // It reuses the same staged+atomic upload path as /custom/, just with these dirs.
 static const char* EMOJI_DEFAULT_DIR       = "/default";
 static const char* EMOJI_DEFAULT_STAGE_DIR = "/default_stage";
