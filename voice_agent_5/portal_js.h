@@ -165,6 +165,17 @@
     return r.json();
   }
 
+  // Drop one emotion's /custom override so the /default set renders again. The
+  // device does the deleting; there is no "restore from backup" because
+  // /default was never written by a user replace in the first place.
+  async function resetEmoji(emotion){
+    const r = await fetch('/api/emoji/' + emotion + '/reset', {method:'POST'});
+    if (!r.ok){
+      const t = await r.text();
+      throw new Error('Reset failed: ' + r.status + ' ' + t);
+    }
+  }
+
   // Pack emoji frames into an existing JSZip. customOnly=true emits only the
   // emotions the user replaced (emoji-pack.zip); customOnly=false emits all 7
   // effective emotions (profile zip). Always writes manifest.json describing the
@@ -500,12 +511,34 @@
         applied.push(e);
       } catch(err){ skipped.push(e + ' (' + err.message + ')'); }
     }
-    return {applied, skipped};
+
+    // ---- drop the /custom overrides so what we just wrote is what renders ----
+    // The loader is "custom else default" (display.ino), so writing /default alone
+    // leaves the screen unchanged for any emotion the user has overridden — the
+    // provision button appeared to do nothing to the emoji.
+    //
+    // Two deliberate choices here. This runs LAST, so a failed download or write
+    // never destroys an override for nothing. And it resets only the emotions we
+    // actually wrote: one that failed keeps its override rather than falling back
+    // to a /default entry we did not manage to replace (or, on a board that never
+    // had one, to no emoji at all).
+    const cleared = [];
+    for (const e of applied){
+      try {
+        status('Clearing custom override for ' + e + '...', 'info');
+        await resetEmoji(e);
+        cleared.push(e);
+      } catch(err){
+        skipped.push(e + ' (default written, but the custom override is still ' +
+                     'shadowing it: ' + err.message + ')');
+      }
+    }
+    return {applied, skipped, cleared};
   }
 
   Object.assign(VA, {
     ALL_EMOTIONS, FRAME_PX, FRAME_BYTES, MAX_FRAMES, PERSONA_MAX, SRC_EXTS, REPO, BRANCH, REPO_BASE,
-    rgba_to_rgb565_le, rgb565_le_to_rgba, drawCover, decodeFile, uploadFrames,
+    rgba_to_rgb565_le, rgb565_le_to_rgba, drawCover, decodeFile, uploadFrames, resetEmoji,
     addEmojiToZip, zipHasEmoji, applyEmoji, applyEmojiFromZip,
     buildProfileZip, applyProfile, applyProfileFromZip, memFiles,
     downloadBlob, fetchRepoIndex, repoFileUrl, importRepoPersona, provisionDefaultPersona

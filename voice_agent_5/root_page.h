@@ -406,7 +406,7 @@ function provStatus(msg, kind){
   s.style.color = kind==='err' ? '#fff' : 'var(--ink)';
 }
 $('provBtn').addEventListener('click', async ()=>{
-  if (!confirm('Overwrite this device’s default persona (prompt, voice & emoji) from the web? Current settings will be replaced.')) return;
+  if (!confirm('Overwrite this device’s default persona (prompt, voice & emoji) from the web?\n\nThe current prompt and voice are replaced, and any custom emoji you uploaded are removed so the new defaults are what show on screen.')) return;
   const btn = $('provBtn');
   btn.disabled = true;
   try{

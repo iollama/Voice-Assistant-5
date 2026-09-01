@@ -1,5 +1,35 @@
-# Name,   Type, SubType, Offset,  Size,    Flags
-nvs,      data, nvs,     0x9000,  0x5000,
-otadata,  data, ota,     0xe000,  0x2000,
-app0,     app,  ota_0,   0x10000, 0x300000,
-spiffs,   data, spiffs,  0x310000,0xAF0000,
+# 16 MB flash (ESP32-S3 N16R8). Ends exactly at 0x1000000.
+#
+# TWO OFFSETS ARE NOT NEGOTIABLE — both toolchains hardcode them when flashing,
+# ignoring whatever this table says:
+#   otadata @ 0xE000  — PlatformIO writes boot_app0.bin there (espidf.py
+#                       FLASH_EXTRA_IMAGES); arduino-esp32's platform.txt upload
+#                       recipe does the same. Put anything else at 0xE000 and a
+#                       flash silently corrupts it.
+#   app0    @ 0x10000 — the default sketch offset in both.
+# Keep them where they are.
+#
+# nvs is therefore at the END of flash, not the usual 0x9000. Nothing requires
+# nvs to sit at a particular address — nvs_flash_init() finds it by the "nvs"
+# label — and moving it is what buys the space. 128 KB (32 pages) instead of the
+# previous 20 KB (5 pages, ~4 usable after GC reserve): the persona blob can be
+# 12 KB = 4 NVS chunks, and NVS writes the new chunks before releasing the old,
+# so a rewrite transiently needs old+new. That did not fit, so persona saves
+# failed silently and the device reverted to the last one that fit on reboot.
+#
+# 0x9000..0xE000 (20 KB) is deliberately unallocated — the hole the old nvs left
+# behind. A gap is legal; there is nothing useful to put in it that isn't
+# constrained to a different address.
+#
+# app1: reserved for OTA (dual-slot, so a failed download can't brick the
+# device). Not wired up yet — no Update.h in the firmware today.
+#
+# Changing any offset here requires a full `esptool erase_flash` + reflash +
+# re-upload of the LittleFS image. See pdocs/build-and-flash.md.
+#
+# Name,   Type, SubType, Offset,   Size,     Flags
+otadata,  data, ota,     0xE000,   0x2000,
+app0,     app,  ota_0,   0x10000,  0x280000,
+app1,     app,  ota_1,   0x290000, 0x280000,
+nvs,      data, nvs,     0x510000, 0x20000,
+spiffs,   data, spiffs,  0x530000, 0xAD0000,

@@ -361,6 +361,40 @@ volatile bool g_volume_persist_pending = false;  // 0->1  volume tool-call: Core
 volatile bool g_show_info_screen       = false;  // 0->1  info tool-call: Core 1 renders, clears on PTT/5 s
 volatile bool g_reconnect_pending      = false;  // 1->0  persona saved: Core 0 reconnects WS when idle
 
+// ---- Agent config trio: mutex-protected, both directions -------------------
+// g_sys_instruction / g_voice / g_language are Strings written by Core 1 (the
+// portal handlers) and read by Core 0 when it builds session.update. Unlike the
+// flags above these are NOT lock-free: a String assignment frees and
+// reallocates the buffer, so an unsynchronised read on the other core is a
+// use-after-free. They also have to move as a group — a torn read could pair
+// persona A with voice B in the same session.
+//
+// Created at the top of setup(), before anything reads it and long before the
+// protocol task is spawned. Hold times are microseconds, and Core 0 only takes
+// it around a reconnect — never on the audio hot path.
+SemaphoreHandle_t g_agent_cfg_mux = nullptr;
+
+// Copy the trio out under the lock. Callers then work off their own locals, so
+// a String buffer owned by the other core is never read directly. Prefer this
+// over lock/unlock around a long block: don't hold the mutex across JSON
+// building or a network send.
+void agent_config_snapshot(String& prompt, String& voice, String& language) {
+  if (g_agent_cfg_mux) xSemaphoreTake(g_agent_cfg_mux, portMAX_DELAY);
+  prompt   = g_sys_instruction;
+  voice    = g_voice;
+  language = g_language;
+  if (g_agent_cfg_mux) xSemaphoreGive(g_agent_cfg_mux);
+}
+
+// For the writers, which have to assign several of the trio together. The null
+// checks cover the single-threaded window at the very start of setup().
+void agent_config_lock() {
+  if (g_agent_cfg_mux) xSemaphoreTake(g_agent_cfg_mux, portMAX_DELAY);
+}
+void agent_config_unlock() {
+  if (g_agent_cfg_mux) xSemaphoreGive(g_agent_cfg_mux);
+}
+
 // Token usage counters (Core 0 writes, Core 1 webserver reads)
 struct TokenUsage {
     uint32_t total;
@@ -395,6 +429,9 @@ static String g_tool_result_output     = "ok";  // function_call_output payload 
 void setup() {
   Serial.begin(115200);
   delay(500);
+
+  // Before load_agent_config() — it assigns the mutex-protected config trio.
+  g_agent_cfg_mux = xSemaphoreCreateMutex();
 
   load_agent_config();
   pinMode(BUTTON_PIN, INPUT_PULLUP);

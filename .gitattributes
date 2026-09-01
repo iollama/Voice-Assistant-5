@@ -1,0 +1,12 @@
+# Persona prompts are measured against the portal's PERSONA_MAX = 12288 *character*
+# limit (voice_agent_5/portal_js.h). Git stores them as LF, but with core.autocrlf
+# a Windows clone checks them out as CRLF -- one extra character per line, ~100 on a
+# full-length persona. That splits the two import paths: "Browse" fetches the raw
+# LF blob and passes, while a profile ZIP built from the checked-out folder carries
+# the CRLF copy and gets rejected as too long. Pin persona.md to LF everywhere so
+# both paths measure the same file.
+#
+# This overrides each contributor's local core.autocrlf, which is the point -- the
+# limit has to hold on machines we don't configure.
+personas/**/persona.md text eol=lf
+voice_agent_5/feelings/persona.md text eol=lf

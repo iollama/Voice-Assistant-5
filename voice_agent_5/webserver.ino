@@ -2,24 +2,28 @@
 // NVS Config & WebServer Handlers
 // =====================================================================
 
+// Reads every persisted setting into RAM. Callable at boot (single-threaded)
+// and from /restoreAgent (Core 1, with the protocol task live), so the three
+// mutex-protected globals are assigned under agent_config_lock().
 void load_agent_config() {
   preferences.begin("agentConfig", true);
 
   size_t blob_len = preferences.getBytesLength("sysPrompt");
   bool needs_sysprompt_migration = false;
+  String loaded_prompt;
   if (blob_len > 0) {
     char* buf = (char*)malloc(blob_len + 1);
     preferences.getBytes("sysPrompt", buf, blob_len);
     buf[blob_len] = '\0';
-    g_sys_instruction = String(buf);
+    loaded_prompt = String(buf);
     free(buf);
   } else {
     String legacy = preferences.getString("sysPrompt", "");
     if (legacy.length() > 0) {
-      g_sys_instruction = legacy;
+      loaded_prompt = legacy;
       needs_sysprompt_migration = true;
     } else {
-      g_sys_instruction = DEFAULT_SYS_INSTRUCTION;
+      loaded_prompt = DEFAULT_SYS_INSTRUCTION;
     }
   }
 
@@ -33,28 +37,49 @@ void load_agent_config() {
   if (g_volume > 100) g_volume = 100;
   g_audio_output = preferences.getUChar("audioOut", AUDIO_OUT_SPEAKER);
   if (g_audio_output > AUDIO_OUT_HEADPHONES) g_audio_output = AUDIO_OUT_SPEAKER;
-  g_voice = preferences.getString("voice", DEFAULT_VOICE);
-  if (!voice_is_allowed(g_voice)) {
+  String loaded_voice = preferences.getString("voice", DEFAULT_VOICE);
+  if (!voice_is_allowed(loaded_voice)) {
     CPRINTF("NVS: stored voice '%s' not in whitelist, falling back to '%s'\n",
-            g_voice.c_str(), DEFAULT_VOICE);
-    g_voice = DEFAULT_VOICE;
+            loaded_voice.c_str(), DEFAULT_VOICE);
+    loaded_voice = DEFAULT_VOICE;
   }
-  g_language = preferences.getString("lang", DEFAULT_LANGUAGE);
-  if (!language_is_allowed(g_language)) {
+  String loaded_language = preferences.getString("lang", DEFAULT_LANGUAGE);
+  if (!language_is_allowed(loaded_language)) {
     CPRINTF("NVS: stored language '%s' not in whitelist, falling back to '%s'\n",
-            g_language.c_str(), DEFAULT_LANGUAGE);
-    g_language = DEFAULT_LANGUAGE;
+            loaded_language.c_str(), DEFAULT_LANGUAGE);
+    loaded_language = DEFAULT_LANGUAGE;
   }
   preferences.end();
 
+  agent_config_lock();
+  g_sys_instruction = loaded_prompt;
+  g_voice           = loaded_voice;
+  g_language        = loaded_language;
+  agent_config_unlock();
+
   if (needs_sysprompt_migration) {
+    // The blob has to replace the string under the same key, so the remove
+    // comes first — which means a failed putBytes would leave NOTHING stored
+    // and the next boot would come up on DEFAULT_SYS_INSTRUCTION. Put the
+    // legacy string back rather than losing the user's persona.
     preferences.begin("agentConfig", false);
     preferences.remove("sysPrompt");
-    preferences.putBytes("sysPrompt", g_sys_instruction.c_str(),
-                         g_sys_instruction.length());
+    size_t written = preferences.putBytes("sysPrompt", loaded_prompt.c_str(),
+                                          loaded_prompt.length());
+    bool ok = (written == loaded_prompt.length());
+    if (!ok) {
+      preferences.remove("sysPrompt");
+      bool restored = (preferences.putString("sysPrompt", loaded_prompt) > 0);
+      CPRINTF("NVS: sysPrompt migration FAILED (wrote %u of %u bytes) — "
+              "NVS is full; legacy string %s\n",
+              (unsigned)written, (unsigned)loaded_prompt.length(),
+              restored ? "restored, will retry next boot" : "COULD NOT BE RESTORED");
+    }
     preferences.end();
-    CPRINTF("NVS: migrated sysPrompt from string to blob (%u bytes)\n",
-            (unsigned)g_sys_instruction.length());
+    if (ok) {
+      CPRINTF("NVS: migrated sysPrompt from string to blob (%u bytes)\n",
+              (unsigned)loaded_prompt.length());
+    }
   }
 }
 
@@ -114,9 +139,14 @@ static String json_escape(const String& in) {
 // Current settings for the static main page to populate itself with.
 // Never returns the API key itself — only whether a custom key is set.
 void handle_config() {
+  // Snapshot the mutex-protected trio into locals first — never hold the lock
+  // across the JSON building below.
+  String cfg_prompt, cfg_voice, cfg_language;
+  agent_config_snapshot(cfg_prompt, cfg_voice, cfg_language);
+
   String json = "{";
-  json += "\"sysPrompt\":\"" + json_escape(g_sys_instruction) + "\",";
-  json += "\"voice\":\"" + json_escape(g_voice) + "\",";
+  json += "\"sysPrompt\":\"" + json_escape(cfg_prompt) + "\",";
+  json += "\"voice\":\"" + json_escape(cfg_voice) + "\",";
   json += "\"voices\":[";
   for (size_t i = 0; i < VOICE_OPTIONS_COUNT; ++i) {
     if (i) json += ",";
@@ -124,7 +154,7 @@ void handle_config() {
     json += "\"label\":\"" + json_escape(VOICE_OPTIONS[i].label) + "\"}";
   }
   json += "],";
-  json += "\"language\":\"" + json_escape(g_language) + "\",";
+  json += "\"language\":\"" + json_escape(cfg_language) + "\",";
   json += "\"languages\":[";
   for (size_t i = 0; i < LANGUAGE_OPTIONS_COUNT; ++i) {
     if (i) json += ",";
@@ -335,7 +365,11 @@ void handle_wifi_add() {
     server.send(400, "text/plain", "Could not save that network");
     return;
   }
-  wifi_store_persist();
+  if (!wifi_store_persist()) {
+    server.send(500, "text/plain",
+                "Settings storage is full — the network was not saved.");
+    return;
+  }
   wifi_refresh_active_slot();
 
   CPRINTF("Wi-Fi store: %s '%s' in slot %d%s%s\n",
@@ -368,7 +402,12 @@ void handle_wifi_delete() {
     server.send(404, "text/plain", "No saved network with that name");
     return;
   }
-  wifi_store_persist();
+  if (!wifi_store_persist()) {
+    server.send(500, "text/plain",
+                "Settings storage is full — the network was not forgotten and "
+                "will come back after a reboot.");
+    return;
+  }
   wifi_refresh_active_slot();
   CPRINTF("Wi-Fi store: forgot '%s' (%u left)\n", ssid.c_str(), (unsigned)g_wifi_store.count);
 
@@ -399,8 +438,14 @@ void handle_wifi_connect() {
     return;
   }
   wifi_store_mark_used(g_wifi_store, idx, 0);
-  wifi_store_persist();
-  wifi_set_pending_target(ssid.c_str());
+  wifi_store_persist();  // best-effort: recency only, the pending target below is what switches
+  if (!wifi_set_pending_target(ssid.c_str())) {
+    // Rebooting now would silently rejoin the network the user asked to leave.
+    server.send(500, "text/plain",
+                "Settings storage is full — could not pin the target network, "
+                "so the device was not restarted.");
+    return;
+  }
   CPRINTF("Wi-Fi store: '%s' pinned as the next boot target; restarting to connect\n",
           ssid.c_str());
 
@@ -411,34 +456,77 @@ void handle_wifi_connect() {
 // Personality card: system prompt + voice only. persist/verbose moved to the
 // admin Behavior card (handle_save_behavior) so saving the prompt can't clear
 // the checkbox-backed flags.
+// Persist first, update RAM only on success. GET /api/config serves the RAM
+// globals, so updating them for a write that didn't land makes the portal show
+// a persona the next boot won't have — which is exactly how a full NVS used to
+// masquerade as a successful save. A partial write reports 500 and leaves the
+// pieces that failed untouched; postForm() in portal_js.h turns that into a
+// visible error in the import summary.
 void handle_save_agent() {
+  if (reject_if_busy()) return;  // ~12 KB blob rewrite erases ~8 flash pages on Core 1
+
   String submitted_prompt = server.arg("sysPrompt");
   if (submitted_prompt.length() > 12288) {
     server.send(413, "text/plain", "System prompt too large (max 12 KB)");
     return;
   }
   preferences.begin("agentConfig", false);
-  g_sys_instruction = submitted_prompt;
-  preferences.putBytes("sysPrompt", g_sys_instruction.c_str(),
-                       g_sys_instruction.length());
+
+  size_t written = preferences.putBytes("sysPrompt", submitted_prompt.c_str(),
+                                        submitted_prompt.length());
+  bool prompt_ok = (written == submitted_prompt.length());
+  if (!prompt_ok) {
+    CPRINTF("POST /saveAgent: sysPrompt write FAILED (%u of %u bytes) — "
+            "NVS full\n",
+            (unsigned)written, (unsigned)submitted_prompt.length());
+  }
+
   String submitted_voice = server.arg("voice");
+  bool voice_ok = true, voice_present = false;
   if (voice_is_allowed(submitted_voice)) {
-    g_voice = submitted_voice;
-    preferences.putString("voice", g_voice);
+    voice_present = true;
+    voice_ok = (preferences.putString("voice", submitted_voice) > 0);
+    if (!voice_ok) CPRINTLN("POST /saveAgent: voice write FAILED — NVS full");
   } else if (submitted_voice.length() > 0) {
     CPRINTF("POST /saveAgent: voice '%s' not in whitelist, ignored\n",
             submitted_voice.c_str());
   }
+
   String submitted_language = server.arg("language");
+  bool lang_ok = true, lang_present = false;
   if (language_is_allowed(submitted_language)) {
-    g_language = submitted_language;
-    preferences.putString("lang", g_language);
+    lang_present = true;
+    lang_ok = (preferences.putString("lang", submitted_language) > 0);
+    if (!lang_ok) CPRINTLN("POST /saveAgent: language write FAILED — NVS full");
   } else if (submitted_language.length() > 0) {
     CPRINTF("POST /saveAgent: language '%s' not in whitelist, ignored\n",
             submitted_language.c_str());
   }
   preferences.end();
-  g_reconnect_pending = true;  // re-apply persona/voice/language to the live session
+
+  // Adopt only what actually persisted.
+  agent_config_lock();
+  if (prompt_ok)                  g_sys_instruction = submitted_prompt;
+  if (voice_present && voice_ok)  g_voice           = submitted_voice;
+  if (lang_present && lang_ok)    g_language        = submitted_language;
+  agent_config_unlock();
+
+  if (prompt_ok || (voice_present && voice_ok) || (lang_present && lang_ok)) {
+    g_reconnect_pending = true;  // re-apply persona/voice/language to the live session
+  }
+
+  if (!prompt_ok || !voice_ok || !lang_ok) {
+    String failed;
+    if (!prompt_ok) failed += "persona ";
+    if (!voice_ok)  failed += "voice ";
+    if (!lang_ok)   failed += "language ";
+    failed.trim();
+    server.send(500, "text/plain",
+                "Settings storage is full — could not save: " + failed +
+                ". Try Admin Zone -> Restore Defaults, then re-import.");
+    return;
+  }
+
   server.sendHeader("Location", "/", true);
   server.send(302, "text/plain", "");
 }
@@ -469,8 +557,16 @@ void handle_save_api_key() {
   String key = server.arg("apiKey");
   if (key.length() > 0) {
     preferences.begin("agentConfig", false);
-    preferences.putString("apiKey", key);
+    bool ok = (preferences.putString("apiKey", key) > 0);
     preferences.end();
+    if (!ok) {
+      // Same trap as the persona: adopting it in RAM would look like a save
+      // that survives a reboot, and it wouldn't.
+      CPRINTLN("POST /saveApiKey: write FAILED — NVS full");
+      server.send(500, "text/plain",
+                  "Settings storage is full — the API key was not saved.");
+      return;
+    }
     g_api_key = key;
   }
   server.sendHeader("Location", "/", true);

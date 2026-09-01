@@ -65,7 +65,7 @@ nav a{color:var(--blue);text-decoration:none;font-weight:900}
 const EMOTIONS_TOP = ["neutral","happy","excited","empathetic"];
 const EMOTIONS_BOTTOM = ["confused","concerned","thinking"];
 const ALL_EMOTIONS = EMOTIONS_TOP.concat(EMOTIONS_BOTTOM);
-const { FRAME_PX, FRAME_BYTES, MAX_FRAMES, decodeFile, uploadFrames, rgb565_le_to_rgba } = VA;
+const { FRAME_PX, FRAME_BYTES, MAX_FRAMES, decodeFile, uploadFrames, resetEmoji, rgb565_le_to_rgba } = VA;
 
 const $ = id => document.getElementById(id);
 function setStatus(msg, kind){
@@ -143,9 +143,8 @@ async function refreshGrid(){
       const e = b.dataset.reset;
       if (!confirm('Reset '+e+' to default?')) return;
       setStatus('Resetting '+e+'...', 'info');
-      const r = await fetch('/api/emoji/'+e+'/reset', {method:'POST'});
-      if (r.ok){ setStatus('Reset '+e, 'ok'); refreshGrid(); }
-      else setStatus('Reset failed: '+await r.text(), 'err');
+      try { await resetEmoji(e); setStatus('Reset '+e, 'ok'); refreshGrid(); }
+      catch(err){ setStatus(err.message, 'err'); }
     });
   });
   setStatus('', '');

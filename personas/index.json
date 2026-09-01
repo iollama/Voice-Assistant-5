@@ -224,6 +224,22 @@
                                                 "hidden":  true
                                             },
                                             {
+                                                "name":  "Theodor Herzl",
+                                                "dir":  "Historical/Theodor Herzl",
+                                                "persona":  "persona.md",
+                                                "settings":  null,
+                                                "thumb":  "neutral.jpg",
+                                                "emotions":  {
+                                                                 "neutral":  "neutral.jpg",
+                                                                 "happy":  "happy.jpg",
+                                                                 "excited":  "excited.jpg",
+                                                                 "empathetic":  "empathetic.jpg",
+                                                                 "confused":  "confused.jpg",
+                                                                 "concerned":  "concerned.jpg",
+                                                                 "thinking":  "thinking.jpg"
+                                                             }
+                                            },
+                                            {
                                                 "name":  "Winston Churchill",
                                                 "dir":  "Historical/Winston Churchill",
                                                 "persona":  "persona.md",

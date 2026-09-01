@@ -24,10 +24,21 @@ void start_soft_ap() {
 // The pure store logic lives in wifi_store.h; only the NVS round-trip and the
 // one-time migration from the legacy single-credential layout are here.
 
-void wifi_store_persist() {
+// Returns false when the blob did not reach flash — NVS full, essentially.
+// Callers that are answering a user action must surface that rather than
+// reporting a save that will be gone after the next reboot. Note this reports a
+// write that did not happen; it never removes anything, so the "a failure must
+// never delete credentials" rule is untouched.
+bool wifi_store_persist() {
   preferences.begin("wifi-creds", false);
-  preferences.putBytes("nets", &g_wifi_store, sizeof(g_wifi_store));
+  size_t written = preferences.putBytes("nets", &g_wifi_store, sizeof(g_wifi_store));
   preferences.end();
+  if (written != sizeof(g_wifi_store)) {
+    CPRINTF("NVS: Wi-Fi store write FAILED (%u of %u bytes) — NVS full\n",
+            (unsigned)written, (unsigned)sizeof(g_wifi_store));
+    return false;
+  }
+  return true;
 }
 
 // Migrate the pre-multi-network layout: a bare "ssid"/"pass" string pair becomes
@@ -100,10 +111,16 @@ void wifi_store_load() {
 // a version bump plus a migration for something that lives for exactly one boot.
 static const char* WIFI_PENDING_KEY = "pending";
 
-void wifi_set_pending_target(const char* ssid) {
+// Returns false if the target did not reach flash. That matters more than it
+// looks: the reboot below would then come up and rejoin the network the user
+// just asked to leave — the same silent veto the scan filter is forbidden from
+// applying.
+bool wifi_set_pending_target(const char* ssid) {
   preferences.begin("wifi-creds", false);
-  preferences.putString(WIFI_PENDING_KEY, ssid);
+  bool ok = (preferences.putString(WIFI_PENDING_KEY, ssid) > 0);
   preferences.end();
+  if (!ok) CPRINTF("NVS: pending Wi-Fi target '%s' write FAILED — NVS full\n", ssid);
+  return ok;
 }
 
 // Read and clear in one go. Clearing BEFORE the attempt is deliberate: a target

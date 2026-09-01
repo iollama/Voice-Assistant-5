@@ -101,10 +101,14 @@ static void handleResponseDone(const String& payload) {
 // (not "auto"), a forced language directive. "auto" adds nothing so the model
 // matches the speaker. Built once per session in buildSessionUpdate() (not the
 // audio hot path), so the String concatenation here is fine.
-static String buildInstructions() {
-    String out = g_sys_instruction;
-    if (g_language.length() && g_language != "auto") {
-        const char* name = language_label(g_language);
+//
+// Takes the persona and language as a snapshot rather than reading the globals:
+// Core 1 can reassign them at any moment from POST /saveAgent, and a String
+// assignment reallocates the buffer under a concurrent reader.
+static String buildInstructions(const String& prompt, const String& language) {
+    String out = prompt;
+    if (language.length() && language != "auto") {
+        const char* name = language_label(language);
         out += "\n\n# Language\nAlways respond only in ";
         out += name;
         out += ". Even if the user speaks or writes in another language, reply only in ";
@@ -114,15 +118,20 @@ static String buildInstructions() {
     return out;
 }
 
+// One snapshot for the whole session.update, so the persona, voice and language
+// that go out are guaranteed to be the same generation.
 static String buildSessionUpdate() {
+    String cfg_prompt, cfg_voice, cfg_language;
+    agent_config_snapshot(cfg_prompt, cfg_voice, cfg_language);
+
     String s = "{\"type\":\"session.update\",\"session\":{"
                "\"type\":\"realtime\","
                "\"instructions\":";
-    s += jsonEscape(buildInstructions());
+    s += jsonEscape(buildInstructions(cfg_prompt, cfg_language));
     s += ",\"audio\":{"
            "\"input\":{\"format\":{\"type\":\"audio/pcm\",\"rate\":24000},\"turn_detection\":null},"
            "\"output\":{\"format\":{\"type\":\"audio/pcm\",\"rate\":24000},\"voice\":";
-    s += jsonEscape(g_voice);
+    s += jsonEscape(cfg_voice);
     s += "}},"
          "\"reasoning\":{\"effort\":\"low\"},"
          "\"tools\":";
@@ -236,7 +245,13 @@ void manage_websockets() {
     g_reconnect_pending = false;  // clear any flag set during the reconnect window
 
     CPRINTLN("WS: Sending session.update...");
-    CPRINTF("WS: System prompt: %s\n", g_sys_instruction.c_str());
+    {
+        // Snapshot rather than printing g_sys_instruction.c_str() directly —
+        // Core 1 can reallocate that buffer from POST /saveAgent mid-print.
+        String log_prompt, log_voice, log_language;
+        agent_config_snapshot(log_prompt, log_voice, log_language);
+        CPRINTF("WS: System prompt: %s\n", log_prompt.c_str());
+    }
     wsClient.send(buildSessionUpdate());
 
     while (wsClient.available() && WiFi.status() == WL_CONNECTED) {
