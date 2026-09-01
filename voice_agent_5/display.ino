@@ -223,6 +223,10 @@ void display_boot_log_unlock() {
 void display_boot_status(const char* msg) {
     if (!g_emoji_ready) return;
     if (s_boot_log_locked) return;
+    // A six-network Wi-Fi cascade can add eight lines on top of the ~8 a normal
+    // boot prints. Stop at the bottom edge rather than drawing off-screen; the
+    // serial log still carries everything.
+    if (s_boot_log_y > DISPLAY_WIDTH_PX - 10) return;
     if (!s_boot_log_started) {
         gfx->fillScreen(RGB565_BLACK);
         s_boot_log_started = true;

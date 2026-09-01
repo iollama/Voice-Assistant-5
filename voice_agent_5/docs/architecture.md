@@ -32,12 +32,13 @@ The sketch is split across multiple `.ino` files in the sketch folder. The Ardui
 |------|----------|
 | `voice_agent_5.ino` | Includes, all globals/defines/enums, `setup()`, `loop()` |
 | `ring_buffer.h` | `PSRAMRingBuffer` class |
+| `wifi_store.h` | `WifiNet` / `WifiStore` record types plus the pure saved-network logic (`wifi_store_find()`, `wifi_store_upsert()`, `wifi_store_lru_index()`, `wifi_store_order_by_recency()`, ...). Deliberately free of NVS, `WiFi` and `String` dependencies. |
 | `display.ino` | `emoji_init_display()`, `emoji_show_emotion()`, `updateDisplay()`, `display_boot_status()`, `display_info_screen()`, `display_captive_portal_screen()` |
 | `hardware.ino` | I2S setup, `writeSilence()`, `updateButtonState()`, `captureMicrophone()`, `manageSpeaker()` |
 | `protocol.ino` | `handleAudioDelta()`, `handleResponseDone()`, `buildSessionUpdate()`, `manage_websockets()`, `protocol_task()`, `sendAudioChunk()`, `jsonEscape()`, `get_api_key()`. Tool-call events are routed to `dispatchToolCall()` (in `tools.ino`) from the `onMessage` lambda. |
 | `tools.ino` | Tool registry `TOOLS[]` with `buildToolsJson()`, `dispatchToolCall()`, `beginToolCall()`, and the handlers `handleEmotionToolCall()` / `handleVolumeToolCall()` / `handleNetworkInfoToolCall()` |
 | `webserver.ino` | `load_agent_config()`, `setup_web_server()`, all `handle_*` HTTP handlers (including `handle_config()` for `GET /api/config` and the emoji web API) |
-| `wifi.ino` | `connectToWiFi()`, `setupMDNS()`, `syncTime()`, `init_wifi_and_time()`, `start_soft_ap()` |
+| `wifi.ino` | `connectToWiFi()` (the multi-network boot cascade), `wifi_store_load()` / `wifi_store_persist()`, `setupMDNS()`, `syncTime()`, `init_wifi_and_time()`, `start_soft_ap()` |
 | `root_page.h` | Static HTML/CSS/JS for the main settings page (`GET /`), served via `send_P`. Live values are fetched client-side from `GET /api/config`. Included from `webserver.ino`. |
 | `emojis_page.h` | Static HTML+JS for `GET /emojis` — included from `webserver.ino`. Both `*_page.h` files live in their own headers because the Arduino auto-prototyper mis-parses `async function` inside a raw string as a C++ prototype. |
 | `theme_css.h` | Shared "neo-brutalist sticker" theme — a `THEME_CSS` raw-string-literal macro (`:root` palette + base rules) that `root_page.h` and `emojis_page.h` concatenate inline via adjacent string literals. Each page stays a single `PROGMEM` blob served by one `send_P` (no heap, no extra round-trip, still self-contained for the captive portal). Lives in a `.h` for the same auto-prototyper reason as the page files. |
@@ -429,16 +430,58 @@ Configuration is stored in ESP32 NVS (Non-Volatile Storage) using the `Preferenc
 | Voice | `voice` | `marin` (whitelisted to the 10 SDK voices: `alloy`, `ash`, `ballad`, `coral`, `echo`, `sage`, `shimmer`, `verse`, `marin`, `cedar`) |
 | Language | `lang` | `auto` — "Automatic (match the speaker)"; any other id forces that language via an instruction directive (whitelisted to `LANGUAGE_OPTIONS[]`) |
 | Audio output | `audioOut` | Speaker (`AUDIO_OUT_SPEAKER`) — see [Dual-DAC layout](#dual-dac-layout-pcb-builds) |
-| WiFi SSID | `wifi-creds/ssid` | — |
-| WiFi password | `wifi-creds/pass` | — |
+| Saved WiFi networks | `wifi-creds/nets` | — (one blob holding all 6 slots; see below) |
 
-The main settings page is **static HTML** (`root_page.h`), served via `send_P`; it fetches current values at load time from `GET /api/config` (which reports whether a custom API key is set, never the key itself) and saves each card with a normal form POST. The *Persist Conversation* and *Verbose Logging* flags were split out of `/saveAgent` into `POST /saveBehavior` so saving the system prompt cannot clear them.
+The main settings page is **static HTML** (`root_page.h`), served via `send_P`; it fetches current values at load time from `GET /api/config` (which reports whether a custom API key is set, never the key itself) and saves each card with a normal form POST. The *Persist Conversation* and *Verbose Logging* flags were split out of `/saveAgent` into `POST /saveBehavior` so saving the system prompt cannot clear them. The Wi-Fi card is the one exception to the form-POST pattern: it renders a list, so it is driven by `fetch()` against the `/api/wifi*` endpoints.
 
-### WiFi Setup (Captive Portal)
+### Saved WiFi Networks
 
-On first boot (no credentials in NVS), or after a failed connection, the device starts a soft AP named `VOICE-AGENT-XXYY` (last 2 bytes of MAC). A DNS captive portal redirects all traffic to the config page at `192.168.4.1`. Once credentials are saved, the device restarts and connects in STA mode.
+The device remembers up to `WIFI_MAX_NETWORKS` (6) networks. Record types and the pure store logic — lookup, recency ordering, LRU eviction, upsert — live in [`wifi_store.h`](../wifi_store.h); NVS persistence and the boot cascade live in `wifi.ino`; the HTTP surface lives in `webserver.ino`.
 
-After successful connection, the web UI is accessible at `http://voice-agent-XXYY.local` (mDNS) or via IP.
+**Storage.** All six records are one `putBytes` blob under `wifi-creds/nets`, in the `wifi-creds` namespace (separate from `agentConfig`, which holds the persona and API key). One key rather than six keeps both multi-field mutations atomic: eviction (drop the LRU slot, write the new entry, in `wifi_store_upsert()`) and a successful connect (stamp `use_seq`, bump `next_seq`, in `wifi_store_mark_used()`). `WifiStore.version` exists so a future encrypted format can be introduced — but bumping it requires a migration, since `wifi_store_is_valid()` rejects unrecognised versions. A blob of the wrong size, or one that fails validation, is run as empty in RAM; the stored bytes are deliberately **not** overwritten, so a firmware-side mistake stays recoverable instead of permanently destroying the saved networks.
+
+**Recency.** Ordering uses a monotonic `use_seq` counter, not wall clock: NTP has not synced when the cascade picks a network (`syncTime()` runs after the connect). `use_seq == 0` means "never connected", which sorts below every used entry — so a pre-loaded network that has not been reached yet is the first candidate for eviction. `last_epoch` is stamped after `syncTime()` succeeds and is used only to render "last used <date>" in the portal.
+
+**Legacy migration.** A board holding the pre-multi-network `wifi-creds/ssid` + `wifi-creds/pass` string pair has it moved into slot 0 on first boot (marked most-recently-used), after which the legacy keys are removed.
+
+### WiFi Setup (Boot Cascade + Captive Portal)
+
+`connectToWiFi()` runs inside `setup()`:
+
+1. **PTT held at power-on** → skip everything and open the portal. This is the escape hatch when no saved network is reachable.
+2. **A pending target, if one is set** → attempted immediately, with the 15 s budget and **without a scan**. See below.
+3. `WiFi.scanNetworks()` — blocking, ~2-3 s. Legitimate *only here*, because `loop()` and the protocol task do not exist yet.
+4. Candidates are the saved entries whose SSID appears in the scan, ordered most-recently-used first, minus the pending target if it was already tried. Networks not in the scan (hidden SSIDs included) are not tried.
+5. Each candidate gets one attempt via `wifi_try_slot()`: `WIFI_CONNECT_TIMEOUT_MS` (8 s), or `WIFI_SOLE_TIMEOUT_MS` (15 s) when there is exactly one candidate. On success the slot is marked used and persisted.
+6. All candidates failed, or none were in range → soft AP + captive portal.
+
+**Pending target.** `POST /api/wifi/connect` writes the requested SSID to `wifi-creds/pending` (a plain string key, deliberately *not* a field in the `WifiStore` blob — it is a one-boot command, and adding a field would force a version bump and a migration). The cascade reads and clears it in one step before anything else, then attempts it directly.
+
+The clear-before-attempt ordering matters: a target that never comes up must not be blind-retried on every future boot.
+
+**Reporting the outcome.** A Connect reboots the device, which destroys the HTTP response that would have said whether it worked — the socket dies with the link. So the cascade records the request and its result in `g_wifi_request_ssid` / `g_wifi_request_ok` (RAM only, Core 1 only; there is nothing to persist, since the portal reads them in the same boot session). `GET /api/wifi` returns them as `lastAttempt`, and the page reports a target it could not reach on the next load: *"Couldn't reach UdisS24P — still on Tirosh-g."*
+
+This exists because recency alone does not make a Connect request stick. `use_seq` only sets the *order* of the candidate list, and that list is built from a scan — so a target the scan happened to miss was dropped entirely, and the device silently rejoined the network the user had just asked it to leave. Bypassing the scan for an explicit request is the fix: a hand-made request is honoured on its own terms, and only falls back to the ordinary cascade if the association actually fails. Note that the scan filter is *not* a validity check on the user's choice — asking for a network that isn't there simply costs one failed attempt.
+
+**A failed attempt never deletes credentials.** Failures are usually transient, and the old wipe-on-failure behavior is what made moving the device between networks painful. Worst case to the portal is ~3 s of scan plus 6 × 8 s ≈ 51 s.
+
+Runtime behavior is unchanged: there is no roaming. If the link drops, the Arduino stack auto-reconnects to the same AP, and `protocol_task` waits on `WiFi.status()`. Moving to a different saved network means a reboot.
+
+In AP config mode the device starts a soft AP named `VOICE-AGENT-XXYY` (last 2 bytes of MAC), and a DNS captive portal redirects all traffic to the config page at `192.168.4.1`. After a successful connection, the web UI is at `http://voice-agent-XXYY.local` (mDNS) or the IP.
+
+### WiFi HTTP API
+
+All of these are idle-gated by `assistant_in_turn()` and return **409** during `RECORDING`/`THINKING`/`SPEAKING`. **No route ever returns a stored password.**
+
+| Route | Purpose |
+|---|---|
+| `GET /api/wifi` | Saved networks, most-recently-used first: `ssid`, `lastUsed`, `neverUsed`, `active`. Plus `lastAttempt` — the SSID and result of an explicit Connect request made before this boot, or `null`. |
+| `GET /api/wifi/scan` | Nearby networks. **Asynchronous** — the first call starts `WiFi.scanNetworks(true)` and answers `{"status":"scanning"}`; the page polls until `done`. A blocking scan here would stall Core 1's audio loop. Results are deduped by SSID (strongest BSSID wins) and sorted by RSSI. |
+| `POST /api/wifi/add` | Add a network, or replace the password of one already saved. No reboot, no change to the current link. Reports the slot count and any evicted SSID so the page can show what happened. |
+| `POST /api/wifi/delete` | Forget a network. Deleting the one in use does not drop the link; it only stops the device choosing it again. |
+| `POST /api/wifi/connect` | Pin a saved network as the next boot's target (`wifi-creds/pending`), mark it most-recently-used, and reboot into it. Rebooting rather than re-associating in place is deliberate: a failed in-place switch would strand the device with neither a station link nor a portal, whereas the cascade falls through to the next candidate and ultimately the portal. |
+
+These replaced the single-credential `POST /save` and `POST /delete` handlers.
 
 ---
 

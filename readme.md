@@ -1,4 +1,4 @@
-﻿# Voice Assistant 5 — STEM Oriented ESP32 Voice Assistant With No Personality
+# Voice Assistant 5 — STEM Oriented ESP32 Voice Assistant With No Personality
 
 Press the button, talk, let go — and get an instant spoken reply, with an animated emoji face that grins, frowns and laughs along with the conversation. Less than $20 in parts, a case you print yourself, running on your own OpenAI key.
 
@@ -27,13 +27,13 @@ devices can cycle between classes.
 - **Plug in your own OpenAI key** -- you control the account and the cost, no subscription in the middle
 - **Make the face your own** -- drop in a GIF, PNG, JPG, or MP4 from the web portal and the assistant uses it as the on-device emoji; reset back to the defaults any time
 - **It remembers the conversation** -- pick up where you left off instead of starting from scratch
-- **Set up WiFi once** -- connect from your phone the first time, it remembers your network forever
+- **Set up WiFi once, anywhere** -- connect from your phone the first time; it remembers up to 6 networks and picks the right one wherever you take it
 - **Build it yourself for ~$20** -- 3D-printed case included, full source open and hackable, parts links provided
 
 ## Initial Setup
 
 1. **Connect to the device's WiFi.** On first boot the assistant creates an open WiFi network named `VOICE-AGENT-XXYY` (the `XXYY` is the last 2 bytes of its MAC address). No password.
-2. **Set your home WiFi.** Your phone should pop the captive portal automatically -- if not, open a browser and go to `http://192.168.4.1`. Enter your WiFi name and password and hit **Save & Restart**. The device remembers it from then on.
+2. **Set your home WiFi.** Your phone should pop the captive portal automatically -- if not, open a browser and go to `http://192.168.4.1`. Under **Wi-Fi Networks**, enter your network name and password, hit **Add network**, then **Connect & reboot**. The device remembers it from then on -- and up to five more.
 3. **Open the settings page.** Once it's on your network, browse to `http://voice-agent-XXYY.local` (same `XXYY` as the AP name). If `.local` doesn't resolve on your network, use the IP address printed to the Serial Monitor.
 4. **Make it your own.** By default the assistant is obsessed with Pokémon and will work them into every reply -- charming for about ten minutes. Edit the **System Prompt** field on the settings page to give it any persona you like.
 
@@ -258,14 +258,28 @@ Then edit `config.h` and replace the placeholder values with your OpenAI API key
 
 ### WiFi Setup (Captive Portal)
 
-1. On first boot (or when saved credentials fail), the device creates a WiFi access point named `VOICE-AGENT-XXYY` (last 2 bytes of MAC)
+1. On first boot (or when none of the saved networks can be reached), the device creates a WiFi access point named `VOICE-AGENT-XXYY` (last 2 bytes of MAC)
 2. The RGB LED flashes yellow to indicate configuration mode
 3. The display shows a WiFi QR code and join instructions — scan it with your phone to join the network automatically
 4. A captive portal page opens automatically (or navigate to `192.168.4.1`)
-5. Enter your WiFi SSID and password, then click **Save & Restart**
+5. Under **Wi-Fi Networks**, enter your network name and password and click **Add network** (or press **Scan** and pick it from the list), then **Connect & reboot**
 6. The device restarts and connects to your WiFi network
 7. Once connected, the display shows the IP address and a QR code — scan it or enter the IP in a browser to reach the settings page
 8. The RGB LED turns green when ready
+
+**Shortcut:** hold the push-to-talk button while powering the device on to go straight to the config portal, without waiting for it to try the saved networks first.
+
+### Multiple WiFi Networks
+
+The device remembers up to **6 networks**, so it can move between home, the office and a phone hotspot without being set up again.
+
+- **At power-on** it scans, then joins the most recently used saved network that is in range. If that one fails it tries the next, and so on; only when they have all failed does it open the config portal. The display names each network as it tries it.
+- **A failed connection never erases the network.** An AP that was simply switched off stays in the list.
+- **Add networks ahead of time.** You can save a network you are nowhere near — type its name and password, and it will be used the next time it is in range. Adding a network does not reboot the device or disturb the current connection.
+- **Full list?** Saving a seventh network drops the least recently used one to make room, and the page tells you which one went. Networks you have saved but never actually connected to are dropped first.
+- **Switching now.** Press **Connect** on any saved network to reboot into it. The device attempts that exact network first, whether or not it showed up in a scan. If it can't be reached, it falls back to its usual order rather than refusing, and tells you so when you next load the settings page: *"Couldn't reach UdisS24P — still on Tirosh-g."* **Forget** removes one; forgetting the network you are currently using does not cut you off, it just stops the device from choosing it again.
+
+Passwords are stored on the device and are never shown again — not on the settings page and not through its API. They are, however, stored unencrypted in the ESP32's NVS flash, so treat physical access to the board as access to those passwords.
 
 ### Agent Settings (Web Portal)
 
@@ -280,7 +294,7 @@ From the settings page you can configure:
 - **Audio Output** -- Speaker or Headphones (only if the optional PCM5102A DAC is installed)
 - **Import / Export Profile** -- **Browse** a gallery of ready-made personas, or back up / transfer your own persona, voice, volume and emoji as a single `.zip` file. Secrets (Wi-Fi, API key) are never exported. Needs the browser to be online. See [voice_agent_5/docs/profile-import-export.md](voice_agent_5/docs/profile-import-export.md).
 
-Less-common options live behind the **Admin Zone** toggle further down the page: Wi-Fi network, your **API Key** (override the compiled `config.h` key, stored in NVS), conversation behavior (Persist Conversation, Verbose Logging), and token usage.
+Less-common options live behind the **Admin Zone** toggle further down the page: **Wi-Fi Networks** (see [Multiple WiFi Networks](#multiple-wifi-networks) above), your **API Key** (override the compiled `config.h` key, stored in NVS), conversation behavior (Persist Conversation, Verbose Logging), and token usage.
 
 All settings are saved to NVS and persist across reboots. Use **Restore defaults** (in the Admin Zone) to reset the agent settings.
 
@@ -372,7 +386,9 @@ These are defined in `voice_agent_5.ino` and require recompilation to change:
 | `JITTER_BUFFER_MS` | 300 | Milliseconds of audio to buffer before starting playback. Higher = smoother but more latency. |
 | `LOW_WATER_BYTES` | 3072 | Rebuffer threshold (~64 ms at 24 kHz). When the speaker buffer drops below this during playback, pause and re-accumulate before resuming. |
 | `DMA_BLOCK_SIZE` | 1024 | I2S DMA transfer size in bytes per read/write call. |
-| `WIFI_CONNECT_TIMEOUT_MS` | 15000 | Time to wait for WiFi before falling back to AP config mode. |
+| `WIFI_CONNECT_TIMEOUT_MS` | 8000 | Time to wait for each saved network in range before trying the next one. |
+| `WIFI_SOLE_TIMEOUT_MS` | 15000 | Time to wait when exactly one saved network is in range — there is nothing to fall through to but the config portal, so it gets a longer budget. |
+| `WIFI_MAX_NETWORKS` | 6 | How many WiFi networks are remembered (in `wifi_store.h`). Saving another drops the least recently used one. |
 | `EMOJI_FRAME_MS` | 120 | Delay between emoji animation frames (~8 fps). Lower = faster animation. |
 | `EMOJI_SIZE_PX` | 150 | Emoji frame dimensions (width and height). Must match `convert_gifs.py` output. |
 | `EMOJI_NUM_FRAMES` | 8 | Number of animation frames per emotion. Must match `convert_gifs.py` output. |
@@ -462,7 +478,7 @@ For detailed technical documentation covering dual-core architecture, ring buffe
 
 ## Troubleshooting
 
-- **LED stays yellow**: WiFi connection failed. The device will fall back to SoftAP mode after 15 seconds. Check your WiFi credentials.
+- **LED stays yellow**: the device is still working through its saved WiFi networks. It tries each one that is in range for 8 seconds before falling back to SoftAP config mode, so with six saved networks this can take about a minute. Hold the push-to-talk button while powering on to skip straight to the config portal.
 - **No sound from speaker**: Verify the MAX98357A SD pin is connected to 3.3V (not GND).
 - **Microphone not picking up audio**: Check INMP441 wiring (especially L/R to GND for left channel).
 - **Can't reach `.local` address**: mDNS may not work on all networks/devices. Use the IP address printed to Serial Monitor instead.

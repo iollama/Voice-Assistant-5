@@ -68,6 +68,23 @@ void handle_root() {
   server.send_P(200, "text/html; charset=utf-8", ROOT_PAGE_HTML);
 }
 
+// Shared idle gate for portal actions that are slow or disruptive.
+// server.handleClient() runs on Core 1 alongside captureMicrophone() and
+// manageSpeaker(), so a handler that occupies Core 1 for any length of time
+// underruns the speaker DMA or drops mic audio. Every such endpoint refuses with
+// HTTP 409 mid-turn. Cheap reads don't need the gate.
+static bool assistant_in_turn() {
+  AssistantState s = (AssistantState)g_state;
+  return s == STATE_RECORDING || s == STATE_THINKING || s == STATE_SPEAKING;
+}
+
+// Sends the 409 and returns true when the caller should stop.
+static bool reject_if_busy() {
+  if (!assistant_in_turn()) return false;
+  server.send(409, "text/plain", "Busy - try again after the current response.");
+  return true;
+}
+
 // Escape a string for safe embedding inside a JSON double-quoted value.
 static String json_escape(const String& in) {
   String out;
@@ -146,24 +163,250 @@ void handle_config() {
   server.send(200, "application/json", json);
 }
 
-void handle_save() {
+// =====================================================================
+// WI-FI NETWORK API
+// =====================================================================
+// Up to WIFI_MAX_NETWORKS saved networks; the store itself lives in wifi_store.h
+// and is persisted by wifi_store_persist() in wifi.ino.
+//
+// NO ROUTE HERE EVER RETURNS A STORED PASSWORD. Passwords go in and are never
+// readable back out — that property is what makes the (currently plaintext) NVS
+// blob acceptable, and it must survive any change to these handlers.
+
+// wifi_store_remove() compacts the array, so a cached slot index goes stale after
+// any deletion. Re-derive it from the SSID we are actually associated with.
+static void wifi_refresh_active_slot() {
+  g_wifi_active_slot = ap_mode ? -1 : wifi_store_find(g_wifi_store, WiFi.SSID().c_str());
+}
+
+// Saved networks, most recently used first — the same order the boot cascade tries.
+static String wifi_nets_json() {
+  String json = "{";
+  json += "\"max\":"    + String(WIFI_MAX_NETWORKS) + ",";
+  json += "\"count\":"  + String((int)g_wifi_store.count) + ",";
+  json += "\"apMode\":" + String(ap_mode ? "true" : "false") + ",";
+  json += "\"nets\":[";
+  uint8_t order[WIFI_MAX_NETWORKS];
+  int n = wifi_store_order_by_recency(g_wifi_store, order);
+  for (int i = 0; i < n; i++) {
+    const WifiNet& net = g_wifi_store.nets[order[i]];
+    if (i) json += ",";
+    json += "{\"ssid\":\""   + json_escape(net.ssid) + "\"";
+    json += ",\"lastUsed\":"  + String((uint32_t)net.last_epoch);
+    json += ",\"neverUsed\":" + String(net.use_seq == 0 ? "true" : "false");
+    json += ",\"active\":"    + String((!ap_mode && (int)order[i] == g_wifi_active_slot)
+                                       ? "true" : "false");
+    json += "}";
+  }
+  json += "],";
+  // Outcome of an explicit Connect request, if one was made before this boot. The
+  // page uses it to report a target it could not reach, since the reboot destroys
+  // the request's own HTTP response.
+  json += "\"lastAttempt\":";
+  if (g_wifi_request_ssid.length() > 0) {
+    json += "{\"ssid\":\"" + json_escape(g_wifi_request_ssid) + "\",\"ok\":";
+    json += g_wifi_request_ok ? "true" : "false";
+    json += "}";
+  } else {
+    json += "null";
+  }
+  json += "}";
+  return json;
+}
+
+// ---- GET /api/wifi ---------------------------------------------------
+void handle_wifi_list() {
+  server.sendHeader("Cache-Control", "no-cache");
+  server.send(200, "application/json", wifi_nets_json());
+}
+
+// ---- GET /api/wifi/scan ----------------------------------------------
+// Asynchronous by necessity. WiFi.scanNetworks() blocks for 2-4 s, and this
+// handler runs on Core 1 inside server.handleClient() — blocking there would
+// starve the audio loop. So: the first call kicks off a background scan and
+// answers {"status":"scanning"}; the page polls until the results are ready.
+// The boot cascade is the one place a blocking scan is legitimate, because it
+// runs in setup() before loop() and the protocol task exist.
+void handle_wifi_scan() {
+  if (reject_if_busy()) return;
+
+  // Tracks whether the poll sequence we are in has already started a scan, so a
+  // fresh press of Scan never answers with leftovers from an abandoned earlier
+  // one. (A request abandoned mid-scan can still yield one stale list on the next
+  // press; harmless, since saving a network that is not currently in range is a
+  // supported action anyway.)
+  static bool scan_started = false;
+
+  int16_t n = WiFi.scanComplete();
+
+  if (!scan_started) {
+    if (n >= 0) WiFi.scanDelete();     // discard results nobody collected
+    WiFi.scanNetworks(true);
+    scan_started = true;
+    server.send(200, "application/json", "{\"status\":\"scanning\"}");
+    return;
+  }
+  if (n == WIFI_SCAN_RUNNING) {
+    server.send(200, "application/json", "{\"status\":\"scanning\"}");
+    return;
+  }
+  if (n < 0) {
+    scan_started = false;              // let the next press try again
+    server.send(500, "text/plain", "Scan failed");
+    return;
+  }
+
+  const int SCAN_MAX = 64;
+  if (n > SCAN_MAX) n = SCAN_MAX;
+
+  // Sort indices by RSSI descending, so the dedup below keeps the strongest BSSID
+  // for each SSID and the page lists the nearest networks first.
+  int idx[SCAN_MAX];
+  for (int i = 0; i < n; i++) idx[i] = i;
+  for (int i = 1; i < n; i++) {
+    int key = idx[i];
+    int j = i - 1;
+    while (j >= 0 && WiFi.RSSI(idx[j]) < WiFi.RSSI(key)) { idx[j + 1] = idx[j]; j--; }
+    idx[j + 1] = key;
+  }
+
+  // Pull each SSID out once. WiFi.SSID(int) builds a String per call, and the
+  // dedup below is O(n^2) — calling it inside the inner loop would mean up to
+  // ~2000 transient heap allocations on Core 1, which is the churn the
+  // no-heap-on-the-audio-path rule exists to avoid even though this is off it.
+  String ssids[SCAN_MAX];
+  for (int i = 0; i < n; i++) ssids[i] = WiFi.SSID(idx[i]);
+
+  String json = "{\"status\":\"done\",\"nets\":[";
+  int emitted = 0;
+  for (int i = 0; i < n; i++) {
+    const String& ssid = ssids[i];
+    if (ssid.length() == 0) continue;   // hidden SSID — nothing to offer the user
+    bool dup = false;
+    for (int j = 0; j < i; j++) {
+      if (ssids[j] == ssid) { dup = true; break; }   // sorted by RSSI, so [j] is the stronger
+    }
+    if (dup) continue;
+    if (emitted) json += ",";
+    json += "{\"ssid\":\"" + json_escape(ssid) + "\"";
+    json += ",\"rssi\":"   + String((int)WiFi.RSSI(idx[i]));
+    json += ",\"secure\":" + String(WiFi.encryptionType(idx[i]) != WIFI_AUTH_OPEN
+                                    ? "true" : "false");
+    json += ",\"saved\":"  + String(wifi_store_find(g_wifi_store, ssid.c_str()) >= 0
+                                    ? "true" : "false");
+    json += "}";
+    emitted++;
+  }
+  json += "]}";
+
+  WiFi.scanDelete();
+  scan_started = false;
+  server.sendHeader("Cache-Control", "no-cache");
+  server.send(200, "application/json", json);
+}
+
+// ---- POST /api/wifi/add ----------------------------------------------
+// Adds a network, or replaces the password of one already saved. No reboot and
+// no change to the current connection — pre-loading a network you are nowhere
+// near is the point. The response says exactly what happened (including which
+// entry was evicted to make room) so the page can report it.
+void handle_wifi_add() {
+  if (reject_if_busy()) return;
+
   String ssid = server.arg("ssid");
   String pass = server.arg("pass");
-  if (ssid.length() > 0) {
-    preferences.begin("wifi-creds", false);
-    preferences.putString("ssid", ssid);
-    preferences.putString("pass", pass);
-    preferences.end();
-    server.send(200, "text/plain", "Credentials Saved! Restarting...");
-    delay(2000); ESP.restart();
+  if (ssid.length() == 0) {
+    server.send(400, "text/plain", "SSID required");
+    return;
   }
+  if (ssid.length() >= WIFI_SSID_MAX) {
+    server.send(400, "text/plain", "SSID too long (max 32 characters)");
+    return;
+  }
+  if (pass.length() >= WIFI_PASS_MAX) {
+    server.send(400, "text/plain", "Password too long (max 63 characters)");
+    return;
+  }
+
+  bool updated = wifi_store_find(g_wifi_store, ssid.c_str()) >= 0;
+  char evicted[WIFI_SSID_MAX];
+  int slot = wifi_store_upsert(g_wifi_store, ssid.c_str(), pass.c_str(), evicted);
+  if (slot < 0) {
+    server.send(400, "text/plain", "Could not save that network");
+    return;
+  }
+  wifi_store_persist();
+  wifi_refresh_active_slot();
+
+  CPRINTF("Wi-Fi store: %s '%s' in slot %d%s%s\n",
+          updated ? "updated" : "added", ssid.c_str(), slot,
+          evicted[0] ? ", evicted " : "", evicted[0] ? evicted : "");
+
+  String json = "{\"ok\":true,\"ssid\":\"" + json_escape(ssid) + "\"";
+  json += ",\"updated\":" + String(updated ? "true" : "false");
+  json += ",\"count\":"   + String((int)g_wifi_store.count);
+  json += ",\"evicted\":";
+  if (evicted[0]) {
+    json += "\"";
+    json += json_escape(evicted);
+    json += "\"";
+  } else {
+    json += "null";
+  }
+  json += "}";
+  server.send(200, "application/json", json);
 }
-void handle_delete() {
-    preferences.begin("wifi-creds", false);
-    preferences.clear();
-    preferences.end();
-    server.send(200, "text/plain", "Deleted! Restarting...");
-    delay(2000); ESP.restart();
+
+// ---- POST /api/wifi/delete -------------------------------------------
+// Forgets a saved network. Deleting the one currently in use does NOT drop the
+// link — it only means the next boot won't choose it.
+void handle_wifi_delete() {
+  if (reject_if_busy()) return;
+
+  String ssid = server.arg("ssid");
+  if (!wifi_store_remove(g_wifi_store, ssid.c_str())) {
+    server.send(404, "text/plain", "No saved network with that name");
+    return;
+  }
+  wifi_store_persist();
+  wifi_refresh_active_slot();
+  CPRINTF("Wi-Fi store: forgot '%s' (%u left)\n", ssid.c_str(), (unsigned)g_wifi_store.count);
+
+  String json = "{\"ok\":true,\"ssid\":\"" + json_escape(ssid) + "\"";
+  json += ",\"count\":" + String((int)g_wifi_store.count) + "}";
+  server.send(200, "application/json", json);
+}
+
+// ---- POST /api/wifi/connect ------------------------------------------
+// Switch to a saved network: record it as the next boot's target, mark it
+// most-recently-used, and reboot. Rebooting rather than re-associating in place is
+// deliberate — a failed in-place switch would strand the device with neither a
+// station link nor a portal, whereas the cascade falls through to the next
+// candidate and ultimately to the captive portal on its own.
+//
+// The pending target is what makes the request stick. Recency alone is not enough:
+// it only sets the *order* of the candidate list, and the candidate list is built
+// from a scan, so a target the scan happens to miss would be dropped and the device
+// would silently rejoin the network you just asked it to leave. The boot cascade
+// attempts a pending target directly, before it scans at all.
+void handle_wifi_connect() {
+  if (reject_if_busy()) return;
+
+  String ssid = server.arg("ssid");
+  int idx = wifi_store_find(g_wifi_store, ssid.c_str());
+  if (idx < 0) {
+    server.send(404, "text/plain", "No saved network with that name");
+    return;
+  }
+  wifi_store_mark_used(g_wifi_store, idx, 0);
+  wifi_store_persist();
+  wifi_set_pending_target(ssid.c_str());
+  CPRINTF("Wi-Fi store: '%s' pinned as the next boot target; restarting to connect\n",
+          ssid.c_str());
+
+  server.send(200, "application/json", "{\"ok\":true,\"rebooting\":true}");
+  delay(500);
+  ESP.restart();
 }
 // Personality card: system prompt + voice only. persist/verbose moved to the
 // admin Behavior card (handle_save_behavior) so saving the prompt can't clear
@@ -252,13 +495,9 @@ void handle_save_volume() {
 
 void handle_save_audio_out() {
   // Reject mid-conversation — flipping mute pins while audio is flowing
-  // would cause a pop and disrupt the turn. Same idle-gate pattern as
-  // emoji uploads (emoji_in_turn).
-  AssistantState s = (AssistantState)g_state;
-  if (s == STATE_RECORDING || s == STATE_THINKING || s == STATE_SPEAKING) {
-    server.send(409, "text/plain", "Busy - finish the current turn and try again.");
-    return;
-  }
+  // would cause a pop and disrupt the turn. Same idle gate as emoji uploads
+  // and the Wi-Fi endpoints.
+  if (reject_if_busy()) return;
   String v = server.arg("audioOut");
   uint8_t newOut = (v == "1" || v == "headphones") ? AUDIO_OUT_HEADPHONES : AUDIO_OUT_SPEAKER;
   if (newOut != g_audio_output) {
@@ -291,11 +530,6 @@ static int emoji_find_emotion_index(const String& name) {
     if (name == EMOTION_NAMES[e]) return e;
   }
   return -1;
-}
-
-static bool emoji_in_turn() {
-  AssistantState s = (AssistantState)g_state;
-  return s == STATE_RECORDING || s == STATE_THINKING || s == STATE_SPEAKING;
 }
 
 // Resolve the directory currently serving frames for an emotion.
@@ -358,7 +592,7 @@ void handle_emoji_get_frame(const String& uri) {
 
 // ---- POST /api/emoji/<emotion>/reset --------------------------------
 void handle_emoji_reset(uint8_t emotion) {
-  if (emoji_in_turn()) {
+  if (assistant_in_turn()) {
     server.send(409, "text/plain", "Busy - try again after the current response.");
     return;
   }
@@ -370,7 +604,7 @@ void handle_emoji_reset(uint8_t emotion) {
 
 // ---- POST /api/emoji/reset-all --------------------------------------
 void handle_emoji_reset_all() {
-  if (emoji_in_turn()) {
+  if (assistant_in_turn()) {
     server.send(409, "text/plain", "Busy - try again after the current response.");
     return;
   }
@@ -428,7 +662,7 @@ void handle_emoji_replace_chunk() {
     }
     g_emoji_upload_active = true;
 
-    if (emoji_in_turn()) {
+    if (assistant_in_turn()) {
       eu_fail(409, "Busy - try again after the current response.");
       return;
     }
@@ -604,8 +838,13 @@ void setup_web_server() {
 #endif
   server.on("/", HTTP_GET, handle_root);
   server.on("/api/config", HTTP_GET, handle_config);
-  server.on("/save", HTTP_POST, handle_save);
-  server.on("/delete", HTTP_POST, handle_delete);
+  // Saved Wi-Fi networks. These replace the old single-credential /save and
+  // /delete form posts.
+  server.on("/api/wifi", HTTP_GET, handle_wifi_list);
+  server.on("/api/wifi/scan", HTTP_GET, handle_wifi_scan);
+  server.on("/api/wifi/add", HTTP_POST, handle_wifi_add);
+  server.on("/api/wifi/delete", HTTP_POST, handle_wifi_delete);
+  server.on("/api/wifi/connect", HTTP_POST, handle_wifi_connect);
   server.on("/saveAgent", HTTP_POST, handle_save_agent);
   server.on("/saveBehavior", HTTP_POST, handle_save_behavior);
   server.on("/restoreAgent", HTTP_POST, handle_restore_agent);

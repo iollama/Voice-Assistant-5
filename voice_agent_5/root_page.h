@@ -6,9 +6,11 @@
 //
 // The page is fully static and served via server.send_P (PROGMEM, no heap).
 // All live values are fetched at load time from GET /api/config and injected by
-// the script below. Settings are saved with normal form POSTs to the existing
-// handlers (handle_save, handle_save_agent, handle_save_volume, ...), so this
-// file owns presentation only.
+// the script below. Most settings are saved with normal form POSTs to the
+// existing handlers (handle_save_agent, handle_save_volume, ...); the saved
+// Wi-Fi network list is the one card driven entirely by fetch() against the
+// /api/wifi* endpoints, since it renders a list rather than a single value.
+// Either way this file owns presentation only.
 
 #pragma once
 
@@ -69,6 +71,30 @@ textarea{min-height:120px;resize:vertical}
 .tok div{background:#fffbe6;border:3px solid var(--ink);border-radius:8px;padding:8px;font-size:12px;font-weight:700}
 .tok b{display:block;font-size:18px;color:var(--blue)}
 .tok .sub{font-size:10px;color:var(--mute);font-weight:700}
+/* ---- saved Wi-Fi networks list + scan picker ---- */
+.wfRow{display:flex;align-items:center;gap:8px;background:#fff;border:3px solid var(--ink);border-radius:8px;
+       padding:9px 10px;margin-top:8px;box-shadow:3px 3px 0 var(--ink)}
+.wfRow.on{background:#eaffea}
+.wfMeta{flex:1;min-width:0}
+.wfName{font-weight:900;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wfSub{font-size:11px;font-weight:700;color:var(--mute);margin-top:2px}
+.wfTag{display:inline-block;background:var(--green);color:var(--ink);border:2px solid var(--ink);border-radius:20px;
+       padding:1px 7px;font-size:10px;font-weight:900;text-transform:uppercase;margin-left:6px;vertical-align:1px}
+.wfTag.new{background:var(--yellow)}
+.wfBtn{flex:none;background:var(--blue);color:#fff;border:3px solid var(--ink);border-radius:20px;padding:6px 11px;
+       font:inherit;font-weight:900;font-size:11px;text-transform:uppercase;cursor:pointer;box-shadow:3px 3px 0 var(--ink)}
+.wfBtn:active{transform:translate(2px,2px);box-shadow:1px 1px 0 var(--ink)}
+.wfBtn[disabled]{opacity:.45;cursor:not-allowed}
+.wfBtn.x{background:var(--red)}
+.wfCount{float:right;font-size:11px;font-weight:900;color:var(--mute);text-transform:uppercase;margin-top:3px}
+.wfPick{border:3px solid var(--ink);border-radius:8px;margin-top:8px;max-height:190px;overflow-y:auto}
+.wfPickRow{display:flex;align-items:center;gap:9px;padding:8px 10px;border-bottom:2px solid #eee;
+           cursor:pointer;font-size:13px;font-weight:700}
+.wfPickRow:last-child{border-bottom:0}
+.wfPickRow:active{background:var(--yellow)}
+.wfPickRow .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wfBars{flex:none;font-family:ui-monospace,Menlo,Consolas,monospace;font-weight:900;color:var(--blue)}
+.wfAdd{margin-top:14px;border-top:3px dashed var(--ink);padding-top:12px}
 /* ---- admin gate: CSS checkbox-hack (works without JS; JS only sets it open in AP mode) ---- */
 .gate-cb{display:none}
 .lockbar{display:flex;align-items:center;gap:14px;background:var(--ink);color:var(--yellow);border:4px solid var(--ink);border-radius:12px;
@@ -151,15 +177,24 @@ textarea{min-height:120px;resize:vertical}
   </label>
 
   <div class="admin">
-    <form class="card" action="/save" method="POST">
-      <h4>&#128246; Wi-Fi Network</h4>
-      <label for="ssid">SSID</label><input type="text" id="ssid" name="ssid" required>
-      <label for="pass" style="margin-top:10px">Password</label><input type="password" id="pass" name="pass">
-      <button type="submit" class="btn">Save &amp; reboot &#9656;</button>
-    </form>
-    <form action="/delete" method="POST" onsubmit="return confirm('Forget this network and restart?');" style="margin-top:-4px">
-      <button type="submit" class="btn danger sm">Forget network</button>
-    </form>
+    <div class="card">
+      <h4>&#128246; Wi-Fi Networks <span class="wfCount" id="wfCount"></span></h4>
+      <div class="hint" style="margin-bottom:4px">Six networks are remembered. At power-on the device joins the
+        most recently used one that's in range, and tries the others if that fails.</div>
+      <div id="wfList"></div>
+      <div id="wfStatus" style="display:none;margin-top:12px;padding:9px;border:3px solid var(--ink);border-radius:8px;font-size:13px;font-weight:700;box-shadow:3px 3px 0 var(--ink)"></div>
+
+      <div class="wfAdd">
+        <label for="wfSsid">Add a network</label>
+        <input type="text" id="wfSsid" placeholder="Network name (SSID)" autocomplete="off" maxlength="32">
+        <button type="button" id="wfScan" class="wfBtn" style="margin-top:10px">&#128269; Scan</button>
+        <div id="wfPick" class="wfPick" style="display:none"></div>
+        <label for="wfPass" style="margin-top:12px">Password</label>
+        <input type="password" id="wfPass" placeholder="Leave empty for an open network" maxlength="63">
+        <div class="hint">You can add a network you're nowhere near &mdash; it'll be used the next time it's in range.</div>
+        <button type="button" id="wfAdd" class="btn go sm">Add network &#9656;</button>
+      </div>
+    </div>
 
     <form class="card" action="/saveApiKey" method="POST">
       <h4>&#128273; OpenAI API Key</h4>
@@ -383,6 +418,170 @@ $('provBtn').addEventListener('click', async ()=>{
   } catch(e){ provStatus('Provision failed: ' + e.message, 'err'); }
   finally { btn.disabled = false; }
 });
+
+// ---- Admin: saved Wi-Fi networks ----
+// The device never returns stored passwords, so this list is built purely from
+// GET /api/wifi. Every mutation re-renders the list AND writes a plain-language
+// line into #wfStatus, so it is always visible that an entry actually landed.
+let wfApMode = false;
+
+function wfSay(msg, kind){
+  const s = $('wfStatus');
+  s.innerHTML = msg;
+  s.style.display = msg ? 'block' : 'none';
+  s.style.background = kind==='err' ? 'var(--red)' : kind==='ok' ? 'var(--green)' : 'var(--yellow)';
+  s.style.color = kind==='err' ? '#fff' : 'var(--ink)';
+}
+function wfWhen(epoch){
+  if (!epoch) return '';
+  const d = new Date(epoch*1000);
+  const days = Math.floor((Date.now() - d.getTime())/86400000);
+  if (days <= 0) return 'Last used today';
+  if (days === 1) return 'Last used yesterday';
+  if (days < 30) return 'Last used ' + days + ' days ago';
+  return 'Last used ' + d.toLocaleDateString();
+}
+async function wfPost(path, ssid, pass){
+  const body = new URLSearchParams();
+  body.set('ssid', ssid);
+  if (pass !== undefined) body.set('pass', pass);
+  const r = await fetch(path, {method:'POST', body});
+  if (!r.ok) throw new Error((await r.text()) || ('HTTP ' + r.status));
+  return r.json();
+}
+async function wfLoad(){
+  let d;
+  try{
+    d = await (await fetch('/api/wifi',{cache:'no-store'})).json();
+  }catch(e){
+    wfSay('Could not read saved networks: ' + e.message, 'err');
+    return;
+  }
+  wfApMode = !!d.apMode;
+  $('wfCount').textContent = d.count + ' of ' + d.max + ' saved';
+
+  // A Connect request reboots the device, which destroys the HTTP response that
+  // would have reported the outcome. The firmware remembers it instead; surface it
+  // here so a target that could not be reached doesn't just fail silently.
+  // Callers that follow wfLoad() with their own wfSay() intentionally override this.
+  if (d.lastAttempt && !d.lastAttempt.ok){
+    const on = (d.nets.find(n=>n.active) || {}).ssid;
+    wfSay("Couldn't reach <b>" + esc(d.lastAttempt.ssid) + '</b> &mdash; '
+          + (on ? 'still on <b>' + esc(on) + '</b>.' : 'not connected to anything.'), 'err');
+  }
+  const list = $('wfList');
+  list.innerHTML = '';
+  if (!d.nets.length){
+    list.innerHTML = '<div class="hint" style="margin-top:8px">No networks saved yet. Add one below.</div>';
+    return;
+  }
+  d.nets.forEach(n=>{
+    const row = document.createElement('div');
+    row.className = 'wfRow' + (n.active ? ' on' : '');
+    const tag = n.active     ? '<span class="wfTag">Connected</span>'
+              : n.neverUsed  ? '<span class="wfTag new">Never used</span>' : '';
+    // neverUsed, not the timestamp, decides the wording: a network can have connected
+    // on a boot where NTP never synced, leaving lastUsed at 0.
+    const sub = n.active    ? 'In use now'
+              : n.neverUsed ? 'Not connected yet'
+              : (wfWhen(n.lastUsed) || 'Used before');
+    row.innerHTML = '<div class="wfMeta"><div class="wfName">' + esc(n.ssid) + tag + '</div>'
+                  + '<div class="wfSub">' + sub + '</div></div>';
+    if (!n.active){
+      const c = document.createElement('button');
+      c.type='button'; c.className='wfBtn';
+      c.textContent = wfApMode ? 'Connect & reboot' : 'Connect';
+      c.addEventListener('click', ()=>wfConnect(n.ssid));
+      row.appendChild(c);
+    }
+    const x = document.createElement('button');
+    x.type='button'; x.className='wfBtn x'; x.textContent='Forget';
+    x.addEventListener('click', ()=>wfForget(n.ssid, n.active));
+    row.appendChild(x);
+    list.appendChild(row);
+  });
+}
+async function wfAddNetwork(){
+  const ssid = $('wfSsid').value.trim();
+  const pass = $('wfPass').value;
+  if (!ssid){ wfSay('Enter a network name first.', 'err'); return; }
+  const btn = $('wfAdd');
+  btn.disabled = true;
+  try{
+    const r = await wfPost('/api/wifi/add', ssid, pass);
+    let msg = r.updated
+      ? 'Replaced the password for <b>' + esc(r.ssid) + '</b>'
+      : 'Saved <b>' + esc(r.ssid) + '</b> &mdash; ' + r.count + ' of 6';
+    if (r.evicted) msg += ', dropped <b>' + esc(r.evicted) + '</b> to make room';
+    $('wfSsid').value = ''; $('wfPass').value = '';
+    $('wfPick').style.display = 'none';
+    await wfLoad();
+    wfSay(msg, 'ok');
+  }catch(e){ wfSay('Could not save: ' + e.message, 'err'); }
+  finally { btn.disabled = false; }
+}
+async function wfForget(ssid, active){
+  const warn = active
+    ? 'Forget "' + ssid + '"? You are connected through it right now — the link stays up, but the device will not choose it again.'
+    : 'Forget "' + ssid + '"?';
+  if (!confirm(warn)) return;
+  try{
+    const r = await wfPost('/api/wifi/delete', ssid);
+    await wfLoad();
+    wfSay('Forgot <b>' + esc(r.ssid) + '</b> &mdash; ' + r.count + ' of 6 saved', 'ok');
+  }catch(e){ wfSay('Could not forget it: ' + e.message, 'err'); }
+}
+async function wfConnect(ssid){
+  if (!confirm('Switch to "' + ssid + '"? The device reboots and joins it, so this page will lose contact and the address may change.')) return;
+  try{
+    await wfPost('/api/wifi/connect', ssid);
+    wfSay('Rebooting to join <b>' + esc(ssid) + '</b>. Reconnect to that network, then reload this page.', 'info');
+  }catch(e){ wfSay('Could not switch: ' + e.message, 'err'); }
+}
+// Scan is asynchronous on the device (a blocking scan would stall the audio loop),
+// so poll until it reports done.
+async function wfRunScan(){
+  const btn = $('wfScan');
+  btn.disabled = true;
+  wfSay('Looking for networks&hellip;', 'info');
+  try{
+    let d = null;
+    for (let i = 0; i < 20; i++){
+      const r = await fetch('/api/wifi/scan',{cache:'no-store'});
+      if (!r.ok) throw new Error((await r.text()) || ('HTTP ' + r.status));
+      d = await r.json();
+      if (d.status === 'done') break;
+      await new Promise(res=>setTimeout(res, 700));
+    }
+    if (!d || d.status !== 'done') throw new Error('scan timed out');
+    const pick = $('wfPick');
+    pick.innerHTML = '';
+    if (!d.nets.length){
+      pick.innerHTML = '<div class="hint" style="padding:9px">Nothing found. Try again, or type the name in by hand.</div>';
+    } else {
+      d.nets.forEach(n=>{
+        const bars = n.rssi >= -55 ? '||||' : n.rssi >= -67 ? '|||' : n.rssi >= -78 ? '||' : '|';
+        const row = document.createElement('div');
+        row.className = 'wfPickRow';
+        row.innerHTML = '<span class="wfBars">' + bars + '</span><span class="nm">' + esc(n.ssid)
+                      + (n.saved ? '<span class="wfTag">Saved</span>' : '') + '</span>'
+                      + (n.secure ? '<span>&#128274;</span>' : '');
+        row.addEventListener('click', ()=>{
+          $('wfSsid').value = n.ssid;
+          pick.style.display = 'none';
+          $('wfPass').focus();
+        });
+        pick.appendChild(row);
+      });
+    }
+    pick.style.display = 'block';
+    wfSay('', '');
+  }catch(e){ wfSay('Scan failed: ' + e.message, 'err'); }
+  finally { btn.disabled = false; }
+}
+$('wfScan').addEventListener('click', wfRunScan);
+$('wfAdd').addEventListener('click', wfAddNetwork);
+wfLoad();
 
 $('ioExport').addEventListener('click', ioExport);
 $('ioImportFile').addEventListener('click', ()=>$('ioFile').click());

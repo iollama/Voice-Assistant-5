@@ -60,6 +60,7 @@
 #include "driver/i2s.h"
 #include "mbedtls/base64.h"
 #include "ring_buffer.h"
+#include "wifi_store.h"
 
 // =====================================================================
 // ASSISTANT STATE
@@ -86,6 +87,20 @@ WebServer server(80);
 DNSServer dnsServer;
 boolean ap_mode = false;
 
+// Saved Wi-Fi networks (see wifi_store.h). Loaded from NVS by the boot cascade in
+// wifi.ino and mutated by the /api/wifi* portal handlers. Both live on Core 1.
+WifiStore g_wifi_store;
+// Index of the slot we are currently connected through, or -1 in AP mode / not connected.
+int g_wifi_active_slot = -1;
+
+// Outcome of an explicit "Connect to X" request, so the portal can report it after
+// the reboot that request triggered — otherwise a target that can't be reached fails
+// silently and the user just finds themselves back on the old network. RAM only and
+// Core 1 only: the attempt happens in setup() and the portal reads it in the same
+// boot session, so there is nothing to persist. Empty ssid = no request this boot.
+String g_wifi_request_ssid = "";
+bool   g_wifi_request_ok   = false;
+
 // =====================================================================
 // TUNING (KNOBS)
 // =====================================================================
@@ -95,7 +110,11 @@ boolean ap_mode = false;
 #define JITTER_BUFFER_BYTES (SAMPLE_RATE_OUT * 2 * JITTER_BUFFER_MS / 1000)
 #define LOW_WATER_BYTES    (1024 * 3)  // ~64ms at 24kHz — rebuffer only when nearly empty
 
-#define WIFI_CONNECT_TIMEOUT_MS  15000  // ms before giving up and falling back to AP mode
+// Boot cascade timings. Per-attempt budget is short so a full six-network sweep still
+// reaches the captive portal in under a minute; a lone candidate gets the old, more
+// forgiving budget since there is nothing to fall through to but the portal.
+#define WIFI_CONNECT_TIMEOUT_MS  8000   // ms per attempt when several candidates are in range
+#define WIFI_SOLE_TIMEOUT_MS     15000  // ms when exactly one saved network is in range
 #define DMA_BLOCK_SIZE           1024   // I2S DMA transfer size (bytes)
 #define DISPLAY_WIDTH_PX         240    // GC9A01 display width
 #define EMOJI_SIZE_PX            150    // emoji frame width & height
@@ -105,6 +124,13 @@ boolean ap_mode = false;
 #define EMOJI_NUM_FRAMES         8      // max frames per emotion (PSRAM slots); per-emotion actual count is g_frame_counts[]
 #define EMOJI_FRAME_MS           120    // ms between frames (~8fps)
 #define EMOJI_PATH_MAX           48     // longest paths look like "/custom_stage/empathetic_7.bin"
+
+// Boot-log line budget for the Wi-Fi cascade. display_boot_status() draws at
+// textSize 1 (6 px/glyph) from x=20 on a 240 px screen, so 36 glyphs fit; the
+// "> " prefix takes 2 and "Hailing " takes 8, leaving 26 for the SSID (which may
+// itself be up to 32) — longer ones are truncated with an ellipsis.
+#define WIFI_BOOT_SSID_MAX       26
+#define WIFI_BOOT_LINE_MAX       36     // "Hailing " + 26 + NUL, rounded up
 
 #define DEFAULT_SYS_INSTRUCTION "You are a helpful voice assistant. Answer concisely and conversationally.\n" \
                                 "You love Pokemon, and you must talk about them, even if the user did not mention them at all.\n" \
