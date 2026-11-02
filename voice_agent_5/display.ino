@@ -154,6 +154,36 @@ static void drawVolumeBar() {
     }
 }
 
+// ---- Audio output icon (above the volume bar apex) --------------------
+// 10x10 glyph: speaker (box + cone) or headphones (band + ear cups).
+// Redrawn only when g_audio_output changes or the screen was wiped.
+
+#define AO_X   21
+#define AO_Y   55
+#define AO_SZ  10
+
+static int  s_audio_icon_prev  = -1;
+static bool s_audio_icon_dirty = false;
+
+static void drawAudioOutputIcon() {
+    if (!g_emoji_ready) return;
+    int out = g_audio_output;
+    if (!s_audio_icon_dirty && out == s_audio_icon_prev) return;
+    s_audio_icon_prev  = out;
+    s_audio_icon_dirty = false;
+
+    gfx->fillRect(AO_X, AO_Y, AO_SZ, AO_SZ, RGB565_BLACK);
+    if (out == AUDIO_OUT_HEADPHONES) {
+        gfx->fillArc(AO_X + 5, AO_Y + 6, 5, 4, 180, 360, VB_FILL_COLOR);  // headband
+        gfx->fillRect(AO_X,     AO_Y + 5, 3, 5, VB_FILL_COLOR);           // left cup
+        gfx->fillRect(AO_X + 7, AO_Y + 5, 3, 5, VB_FILL_COLOR);           // right cup
+    } else {
+        gfx->fillRect(AO_X, AO_Y + 3, 3, 4, VB_FILL_COLOR);               // box
+        gfx->fillTriangle(AO_X + 2, AO_Y + 5, AO_X + 8, AO_Y,
+                          AO_X + 8, AO_Y + 9, VB_FILL_COLOR);              // cone
+    }
+}
+
 // Switch to a new emotion: load frames, draw first frame immediately
 static void emoji_show_emotion(uint8_t emotion) {
     if (!g_emoji_ready) return;
@@ -185,9 +215,11 @@ static void emoji_show_emotion(uint8_t emotion) {
         CPRINTF("Display: %s (text fallback)\n", name);
     }
 
-    // fillScreen wiped the volume bar — redraw it over the new frame
+    // fillScreen wiped the volume bar and output icon — redraw them over the new frame
     s_vol_bar_dirty = true;
     drawVolumeBar();
+    s_audio_icon_dirty = true;
+    drawAudioOutputIcon();
 }
 
 static void emoji_init_display() {
@@ -465,6 +497,9 @@ static void updateDisplay() {
 
     // Volume bar — no-op unless g_volume changed
     drawVolumeBar();
+
+    // Output icon — no-op unless g_audio_output changed
+    drawAudioOutputIcon();
 }
 
 #else

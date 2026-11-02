@@ -81,9 +81,10 @@ void setup_audio_output_pins() {
 }
 
 void apply_audio_output() {
-  // Flush a couple of silence blocks so the swap happens on a quiet bus.
-  writeSilence(true);
-  writeSilence(true);
+  // Flush the whole DMA queue (8 x 256 frames x 2 B = 4 blocks) plus one, so
+  // any speech still queued — e.g. the tail of the set_audio_output reply,
+  // applied the moment the turn ends — has played before the pins move.
+  for (int i = 0; i < 5; i++) writeSilence(true);
   if (g_audio_output == AUDIO_OUT_HEADPHONES) {
     digitalWrite(AUDIO_MAX_SD_PIN, LOW);
     digitalWrite(AUDIO_PCM_XSMT_PIN, HIGH);

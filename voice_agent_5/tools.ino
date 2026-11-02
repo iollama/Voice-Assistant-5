@@ -67,6 +67,36 @@ static void handleVolumeToolCall(const String& payload) {
     g_tool_result_output = String("volume set to ") + new_vol;
 }
 
+static void handleAudioOutputToolCall(const String& payload) {
+    DynamicJsonDocument doc(1024);
+    if (deserializeJson(doc, payload) != DeserializationError::Ok) return;
+
+    const char* args_str = doc["arguments"];
+    beginToolCall(doc["call_id"] | "");
+
+    if (!args_str) return;
+    DynamicJsonDocument args(128);
+    if (deserializeJson(args, args_str) != DeserializationError::Ok) return;
+
+    const char* out = args["output"] | "";
+    uint8_t target;
+    if      (strcmp(out, "headphones") == 0) target = AUDIO_OUT_HEADPHONES;
+    else if (strcmp(out, "speaker")    == 0) target = AUDIO_OUT_SPEAKER;
+    else {
+        g_tool_result_output = "unknown output; use speaker or headphones";
+        return;
+    }
+
+    if (target == g_audio_output) {
+        g_tool_result_output = String("already using the ") + out;
+        return;
+    }
+    g_audio_output_request = target;  // Core 1's loop() applies it once this turn ends
+    CPRINTF("AUDIO OUT: request %s\n", out);
+
+    g_tool_result_output = String("switching to the ") + out + " after this reply";
+}
+
 static void handleNetworkInfoToolCall(const String& payload) {
     DynamicJsonDocument doc(256);
     if (deserializeJson(doc, payload) != DeserializationError::Ok) return;
@@ -99,6 +129,17 @@ static const Tool TOOLS[] = {
         "\"delta\":{\"type\":\"integer\",\"minimum\":-100,\"maximum\":100,"
         "\"description\":\"Relative change to current volume.\"}}}",
         handleVolumeToolCall
+    },
+    {
+        "set_audio_output",
+        "Switch where your voice plays: the built-in 'speaker' or the 'headphones' jack "
+        "(also used for an external powered speaker via AUX). Use when the user asks to move "
+        "audio to headphones or back to the speaker. The switch happens right after your "
+        "current reply, so confirm briefly. The change persists across reboots.",
+        "{\"type\":\"object\",\"properties\":{"
+        "\"output\":{\"type\":\"string\",\"enum\":[\"speaker\",\"headphones\"]}"
+        "},\"required\":[\"output\"]}",
+        handleAudioOutputToolCall
     },
     {
         "show_network_info",

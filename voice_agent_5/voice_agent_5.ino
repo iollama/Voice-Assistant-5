@@ -358,6 +358,7 @@ volatile bool cmd_cancel               = false;  // 1->0  PTT/barge-in: send res
 volatile bool cmd_commit               = false;  // 1->0  PTT release: commit input audio buffer
 volatile bool ws_response_done         = false;  // 0->1  response.done seen (jitter-buffer flush gate)
 volatile bool g_volume_persist_pending = false;  // 0->1  volume tool-call: Core 1 writes NVS
+volatile uint8_t g_audio_output_request = 0xFF;  // 0->1  audio-output tool-call: Core 1 applies when idle (0xFF = none)
 volatile bool g_show_info_screen       = false;  // 0->1  info tool-call: Core 1 renders, clears on PTT/5 s
 volatile bool g_reconnect_pending      = false;  // 1->0  persona saved: Core 0 reconnects WS when idle
 
@@ -536,6 +537,14 @@ void loop() {
     preferences.begin("agentConfig", false);
     preferences.putInt("volume", g_volume);
     preferences.end();
+  }
+
+  // Apply an audio-output tool-call request only between turns — flipping the
+  // mute pins mid-conversation pops (same rule as the portal's 409 gate).
+  if (g_audio_output_request != 0xFF && !assistant_in_turn()) {
+    uint8_t req = g_audio_output_request;
+    g_audio_output_request = 0xFF;
+    if (!set_audio_output(req)) CPRINTLN("AUDIO OUT: NVS write failed, not switched");
   }
 
   updateButtonState();   // 1. PTT debounce & state transitions

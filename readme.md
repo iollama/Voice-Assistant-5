@@ -85,7 +85,7 @@ What's in `pcb/`:
 
 The board was scripted-routed then hand-finished in KiCad (a couple of stragglers a headless autorouter leaves behind); run your own DRC pass in KiCad if you want to double-check before ordering. The parametric generator that produced this board (component placement, net list, silkscreen) isn't part of this release -- `pcb/` ships the finished design, not the pipeline that built it.
 
-Populate it with the same parts as the [Hardware Components](#hardware-components) table above (skip the breadboard and jumper wires -- solder straight onto the board footprints instead). The PCM5102A headphone DAC is optional, same as the breadboard build; if you install it, use the **PCB build** parts (`ring_pcb.stl`, `top_pcb.stl`, `bottom_pcb.stl`) from [3D Printed Enclosure](#3d-printed-enclosure) below, which carry a matching 3.5 mm jack hole in the ring. The board's spare-GPIO header is documented in [Expansion Header (PCB build only)](#expansion-header-pcb-build-only) below.
+Populate it with the same parts as the [Hardware Components](#hardware-components) table above (skip the breadboard and jumper wires -- solder straight onto the board footprints instead). The PCM5102A headphone DAC is optional, same as the breadboard build; if you install it, use the **PCB build** parts (`pcb_ring.stl`, `pcb_top.stl`, `pcb_bottom.stl`) from [3D Printed Enclosure](#3d-printed-enclosure) below, which carry a matching 3.5 mm jack hole in the ring. The board's spare-GPIO header is documented in [Expansion Header (PCB build only)](#expansion-header-pcb-build-only) below.
 
 ## Pin Assignments
 
@@ -129,6 +129,8 @@ Populate this only if you want a headphone jack or want to feed a powered speake
 | L / R / GND | 3.5 mm stereo jack | Built into the breakout PCB |
 
 The portal *Audio Output* selector (below *Volume*) picks Speaker (MAX98357A) or Headphones (PCM5102A). The choice persists across reboots. Changes are rejected with HTTP 409 during an active conversation -- save while idle (green LED).
+
+You can also just say *"switch to headphones"* or *"use the speaker"*. VA5 confirms on the current output and switches right after that reply. A small speaker / headphones icon above the on-screen volume bar shows where audio is going. (Without a PCM5102A installed, "headphones" goes silent; say *"switch back to the speaker"* to undo.)
 
 ### Display -- GC9A01
 
@@ -232,7 +234,7 @@ pio device monitor         # serial monitor at 115200, with esp32 exception deco
 
 Or, in VS Code, install the **PlatformIO IDE** extension and use the toolbar buttons (Build / Upload / Upload Filesystem Image / Serial Monitor).
 
-`platformio.ini` uses the [pioarduino](https://github.com/pioarduino/platform-espressif32) fork of the espressif32 platform -- the default upstream platform is stuck on Arduino-ESP32 core 2.x and is missing a header that `Arduino_GFX_Library` 1.6.5 needs. The pin `55.03.38-1` matches Arduino-ESP32 3.3.8.
+`platformio.ini` uses the [pioarduino](https://github.com/pioarduino/platform-espressif32) fork of the espressif32 platform -- the default upstream platform is stuck on Arduino-ESP32 core 2.x and is missing a header that `Arduino_GFX_Library` 1.6.5 needs. The pin `55.03.312-1` matches Arduino-ESP32 3.3.12.
 
 The vendored ArduinoWebsockets is found via PlatformIO's `src_dir = voice_agent_5` setting -- do not add `arduinoWebsockets` to `lib_deps`.
 
@@ -412,11 +414,10 @@ These are configurable at runtime via the web portal and persist across reboots:
 
 The `box/` directory contains the STL files for a circular 145 mm enclosure designed to hold all components. The geometry is a parametric [build123d](https://github.com/gumyr/build123d) (Python) model; the `.stl` files here are pre-generated from it, so you don't need to render anything yourself.
 
-Each printable part is its own STL. Pick the set that matches your build:
+Each printable part is its own STL, and the file prefix tells you which build it belongs to — print every `3dp_*` file **or** every `pcb_*` file, never a mix. No part is shared between the two builds.
 
-- **Breadboard / jumper-wire build:** `ring_3dprint.stl` (carries the same 3.5 mm jack passthrough as the PCB ring, for the optional PCM5102A), `top_3dprint.stl` (the top plate carries printed bosses for the ESP32, display, amp, mic, and button), `bottom.stl`.
-- **PCB build:** `ring_pcb.stl` (includes a 3.5 mm jack passthrough aligned with the optional PCM5102A DAC), `top_pcb.stl` (completely flat — the speaker is glued, so there are no bosses), `bottom_pcb.stl` (carries four standoffs that set the PCB height above the bottom plate).
-- **Both builds also use:** `speaker_y_bracket.stl`. The breadboard build additionally uses `cantilever_bracket.stl`, `inline_button_frame.stl`, and `inline_button_bracket.stl`.
+- **Breadboard / jumper-wire build (`3dp_*`, 7 parts):** `3dp_ring.stl` (carries the same 3.5 mm jack passthrough as the PCB ring, for the optional PCM5102A), `3dp_top.stl` (the top plate carries printed bosses for the ESP32, display, amp, mic, speaker, and button), `3dp_bottom.stl`, plus the small parts that mount components to the top plate: `3dp_speaker_y_bracket.stl`, `3dp_cantilever_bracket.stl` (ESP32 clamp), `3dp_inline_button_frame.stl`, and `3dp_inline_button_bracket.stl`.
+- **PCB build (`pcb_*`, 3 parts):** `pcb_ring.stl` (includes a 3.5 mm jack passthrough aligned with the optional PCM5102A DAC), `pcb_top.stl` (completely flat — the speaker is glued, so there are no bosses), `pcb_bottom.stl` (carries four standoffs that set the PCB height above the bottom plate).
 
 The parametric build123d source (where dimensions, component positions, and clearances are defined) is maintained in the project's development repo and isn't bundled with this release — just pick the STL set matching your build above and print.
 

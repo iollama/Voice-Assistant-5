@@ -589,6 +589,20 @@ void handle_save_volume() {
   server.send(302, "text/plain", "");
 }
 
+// Shared by the portal handler and the set_audio_output tool (via loop()).
+// Core 1 only, and only while idle. Persist first, adopt + apply only on
+// success — an NVS write result is never discarded.
+bool set_audio_output(uint8_t out) {
+  if (out == g_audio_output) return true;
+  preferences.begin("agentConfig", false);
+  size_t stored = preferences.putUChar("audioOut", out);
+  preferences.end();
+  if (!stored) return false;
+  g_audio_output = out;
+  apply_audio_output();
+  return true;
+}
+
 void handle_save_audio_out() {
   // Reject mid-conversation — flipping mute pins while audio is flowing
   // would cause a pop and disrupt the turn. Same idle gate as emoji uploads
@@ -596,12 +610,9 @@ void handle_save_audio_out() {
   if (reject_if_busy()) return;
   String v = server.arg("audioOut");
   uint8_t newOut = (v == "1" || v == "headphones") ? AUDIO_OUT_HEADPHONES : AUDIO_OUT_SPEAKER;
-  if (newOut != g_audio_output) {
-    g_audio_output = newOut;
-    preferences.begin("agentConfig", false);
-    preferences.putUChar("audioOut", g_audio_output);
-    preferences.end();
-    apply_audio_output();
+  if (!set_audio_output(newOut)) {
+    server.send(500, "text/plain", "Failed to save audio output.");
+    return;
   }
   server.sendHeader("Location", "/", true);
   server.send(302, "text/plain", "");

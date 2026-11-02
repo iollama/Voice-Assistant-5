@@ -66,6 +66,9 @@ Volume tool call state crosses cores:
 - `g_volume` — written by Core 0 with the new level; read by Core 1's `manageSpeaker()` for PCM scaling
 - `g_volume_persist_pending` — set by Core 0, cleared by Core 1 after NVS write
 
+Audio output tool call crosses cores:
+- `g_audio_output_request` — set by Core 0 (`handleAudioOutputToolCall`) to the requested `AudioOutput` (`0xFF` = none). Core 1's `loop()` applies it via `set_audio_output()` (NVS write + `apply_audio_output()`) only once `assistant_in_turn()` is false, so the mute pins never toggle mid-turn.
+
 Network info screen crosses cores:
 - `g_show_info_screen` — set by Core 0 (`handleNetworkInfoToolCall`); read and cleared by Core 1 on PTT press. While true, `loop()` shows the info screen and suppresses normal emoji display.
 
@@ -254,7 +257,7 @@ i2s_write() [1024 byte chunks] → MAX98357A → speaker
    - `session.audio.input.turn_detection`: **null** (manual PTT, not VAD)
    - `session.reasoning.effort`: `"low"` (hard-coded — OpenAI's recommended default for production voice agents)
    - `session.instructions` from NVS (printed to Serial at this point); the `temperature` field was removed in GA so it is not sent
-   - Tools: `set_display_emotion` (emotion enum + intensity float), `set_volume` (absolute level 0–100 or relative delta -100..100), `show_network_info` (no params — displays IP QR + token count on screen, stays until next PTT press, returns `"ok"`). The schema for each tool is built automatically from `TOOLS[]` in `tools.ino` by `buildToolsJson()`.
+   - Tools: `set_display_emotion` (emotion enum + intensity float), `set_volume` (absolute level 0–100 or relative delta -100..100), `set_audio_output` (`output`: `"speaker"` or `"headphones"`; applied after the current reply), `show_network_info` (no params — displays IP QR + token count on screen, stays until next PTT press, returns `"ok"`). The schema for each tool is built automatically from `TOOLS[]` in `tools.ino` by `buildToolsJson()`.
    - `tool_choice: "auto"` — model calls tools when appropriate
 
 ### WebSocket Message Handling
@@ -268,6 +271,7 @@ Tool calls are routed through `dispatchToolCall()` in `tools.ino`, which iterate
 | `response.output_audio.delta` | Extract `"delta"` field, Base64 decode, write to `out_ring_buf` |
 | `response.function_call_arguments.done` (name: `set_display_emotion`) | Parse `emotion` + `intensity` via ArduinoJson, store `call_id`, set `g_awaiting_tool_response = true`, print mood to Serial |
 | `response.function_call_arguments.done` (name: `set_volume`) | Parse `volume` or `delta` via ArduinoJson, clamp result to 0–100, write `g_volume`, set `g_volume_persist_pending = true`; store `call_id`, set `g_awaiting_tool_response = true` |
+| `response.function_call_arguments.done` (name: `set_audio_output`) | Parse `output` via ArduinoJson; if it differs from `g_audio_output`, set `g_audio_output_request` (Core 1 applies when idle); store `call_id`, set `g_awaiting_tool_response = true` |
 | `response.function_call_arguments.done` (name: `show_network_info`) | Store `call_id`, set `g_show_info_screen = true`, set `g_awaiting_tool_response = true` |
 | `response.done` / `response.output_audio.done` — tool pending | Clear `g_awaiting_tool_response`, set `g_tool_result_ready = true` |
 | `response.done` / `response.output_audio.done` — no tool pending | Set `ws_response_done = true` |
@@ -358,6 +362,30 @@ Exactly one of `volume` or `delta` is expected per call. The resulting level is 
 The change persists to NVS under the same `agentConfig`/`"volume"` key used by the web UI, so it survives reboots and is visible on the settings page.
 
 **Cross-core write path:** Core 0 (`protocol_task`) writes `g_volume` and sets `g_volume_persist_pending = true`. Core 1's `loop()` detects `g_volume_persist_pending`, performs the NVS write, and clears the flag. NVS writes are deferred to Core 1 because writing to NVS while the WiFi/TLS stack is active on Core 0 can cause contention.
+
+---
+
+## Audio Output Tool Definition
+
+The `set_audio_output` tool lets the user say "switch to headphones" / "use the speaker" instead of using the portal's *Audio Output* selector.
+
+```json
+{
+  "type": "function",
+  "name": "set_audio_output",
+  "parameters": {
+    "type": "object",
+    "properties": { "output": { "type": "string", "enum": ["speaker", "headphones"] } },
+    "required": ["output"]
+  }
+}
+```
+
+**Deferred apply:** the call arrives mid-turn, but toggling the mute pins during a conversation pops and risks a DMA underrun (the same reason `POST /saveAudioOut` returns 409 while busy). So Core 0 only records the request in `g_audio_output_request`. Core 1's `loop()` applies it once `assistant_in_turn()` is false, which means the model's spoken confirmation plays on the *old* output and the next reply comes out of the new one. The apply path is `set_audio_output()` in `webserver.ino`, shared with the portal handler. It persists `agentConfig`/`"audioOut"` first and only switches if the NVS write succeeds.
+
+There is no hardware detection of the PCM5102A (it is a receive-only I2S DAC), so the tool is always offered. On a build without it, "switch to headphones" goes silent; "switch back to the speaker" recovers.
+
+**Display indicator:** a 10×10 glyph above the volume bar's apex (`drawAudioOutputIcon()` in `display.ino`) shows a speaker or headphones. It is redrawn only when `g_audio_output` changes or after a full-screen wipe.
 
 ---
 
