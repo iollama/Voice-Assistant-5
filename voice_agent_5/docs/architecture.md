@@ -2,6 +2,8 @@
 
 ESP32-S3 push-to-talk voice assistant using the OpenAI Realtime API (speech-to-speech over secure WebSockets), with emotion tool calling for display state feedback.
 
+> **Video walkthrough:** [va5-audio-explainer.mp4](va5-audio-explainer.mp4) (4 min, narrated) follows one voice turn through the 3D-printed build: the button press, mic DMA and upload on the two cores, the `gpt-realtime-2` session, a `set_display_emotion` tool call, the jitter buffer and rebuffer, and I2S playback. The code excerpts and numbers on screen are the firmware's. The conversation is a simulated example, including a network stall staged to show the rebuffer.
+
 ---
 
 ## System Overview

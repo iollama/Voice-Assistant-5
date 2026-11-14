@@ -477,6 +477,8 @@ For the full async tool call flow diagram, see [voice_agent_5/docs/architecture.
 
 For detailed technical documentation covering dual-core architecture, ring buffer internals, audio pipeline, protocol details, emoji display system, and memory layout, see [architecture.md](voice_agent_5/docs/architecture.md).
 
+For a 4-minute narrated walkthrough of one voice turn on the 3D-printed build — push-to-talk, the two cores, the Realtime session, a tool call, the jitter buffer and playback — watch [va5-audio-explainer.mp4](voice_agent_5/docs/va5-audio-explainer.mp4).
+
 ## Troubleshooting
 
 - **LED stays yellow**: the device is still working through its saved WiFi networks. It tries each one that is in range for 8 seconds before falling back to SoftAP config mode, so with six saved networks this can take about a minute. Hold the push-to-talk button while powering on to skip straight to the config portal.
